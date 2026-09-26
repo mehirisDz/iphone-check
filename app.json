@@ -1,0 +1,78 @@
+{
+  "expo": {
+    "name": "iPhone Check",
+    "slug": "iphone-check",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0D0D0D",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0D0D0D"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.iphonecheck.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Camera is used for front/rear camera preview and flashlight tests.",
+        "NSMicrophoneUsageDescription": "Microphone is used to test if the mic is picking up audio input.",
+        "NSLocationWhenInUseUsageDescription": "Location is used to verify the GPS sensor is working.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Location is used to verify the GPS sensor is working.",
+        "NSFaceIDUsageDescription": "Face ID is tested to verify biometric hardware is functioning.",
+        "NSBluetoothAlwaysUsageDescription": "Bluetooth state is checked to confirm the radio is enabled.",
+        "NSBluetoothPeripheralUsageDescription": "Bluetooth is used to verify the Bluetooth hardware.",
+        "UIRequiresFullScreen": true
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0D0D0D",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png"
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.VIBRATE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Camera is used for front/rear camera preview and flashlight tests.",
+          "microphonePermission": "Microphone is used to test if the mic is picking up audio input.",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Location is used to verify the GPS sensor is working."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Face ID is tested to verify biometric hardware is functioning."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "iphone-check"
+      }
+    }
+  }
+}
