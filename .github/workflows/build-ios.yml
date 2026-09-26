@@ -1,0 +1,82 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # allows manual trigger from GitHub UI
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install xcpretty
+        run: gem install xcpretty
+
+      - name: Expo prebuild (generate iOS native project)
+        run: npx expo prebuild --platform ios --clean --no-install
+        env:
+          EXPO_NO_TELEMETRY: 1
+          CI: 1
+
+      - name: Install CocoaPods dependencies
+        run: |
+          cd ios
+          pod install --repo-update
+        env:
+          CI: 1
+
+      - name: Detect Xcode workspace and scheme
+        id: xcode
+        run: |
+          WORKSPACE=$(find ios -maxdepth 1 -name "*.xcworkspace" | head -1)
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
+          echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
+          echo "Workspace: $WORKSPACE"
+          echo "Scheme: $SCHEME"
+
+      - name: Build unsigned archive
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -workspace "${{ steps.xcode.outputs.workspace }}" \
+            -scheme "${{ steps.xcode.outputs.scheme }}" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$PWD/build/iPhoneCheck.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            | xcpretty --color
+
+      - name: Package .app into .ipa
+        run: |
+          mkdir -p Payload
+          APP_PATH=$(find build/iPhoneCheck.xcarchive/Products/Applications -name "*.app" | head -1)
+          echo "Found app: $APP_PATH"
+          cp -r "$APP_PATH" Payload/
+          zip -r iphone-check.ipa Payload/
+          echo "IPA size: $(du -sh iphone-check.ipa | cut -f1)"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: iphone-check-ipa
+          path: iphone-check.ipa
+          retention-days: 30
+          if-no-files-found: error
