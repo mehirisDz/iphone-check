@@ -17,7 +17,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
@@ -29,22 +29,6 @@ jobs:
           EXPO_NO_TELEMETRY: 1
           CI: 1
 
-      - name: Disable code signing in Podfile
-        run: |
-          ruby -e "
-          podfile = File.read('ios/Podfile')
-          patch = %Q{
-              installer.pods_project.targets.each do |target|
-                target.build_configurations.each do |config|
-                  config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
-                  config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
-                end
-              end
-          }
-          podfile.gsub!(/post_install do \|installer\|/, \"post_install do |installer|#{patch}\")
-          File.write('ios/Podfile', podfile)
-          "
-
       - name: Install CocoaPods dependencies
         run: |
           cd ios
@@ -52,42 +36,67 @@ jobs:
         env:
           CI: 1
 
-      - name: Detect Xcode workspace and scheme
+      - name: List Xcode schemes
         id: xcode
         run: |
           WORKSPACE=$(find ios -maxdepth 1 -name "*.xcworkspace" | head -1)
-          SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null | awk '/Schemes:/{flag=1;next}/^[[:space:]]*$/{flag=0}flag{gsub(/^[ \t]+/, ""); print; exit}')
           echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
+          echo "=== Available schemes ==="
+          xcodebuild -list -workspace "$WORKSPACE" 2>&1
+          # Pick the first non-Pods scheme
+          SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" 2>&1 | awk '/Schemes:/,/^$/' | tail -n +2 | grep -v Pods | head -1 | tr -d ' ')
           echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
-          echo "Detected Workspace: $WORKSPACE"
-          echo "Detected Scheme: $SCHEME"
+          echo "=== Using scheme: $SCHEME ==="
 
-      - name: Build unsigned Release .app
+      - name: Disable signing via xcconfig
         run: |
+          cat > /tmp/nosign.xcconfig <<'EOF'
+          CODE_SIGNING_ALLOWED = NO
+          CODE_SIGNING_REQUIRED = NO
+          CODE_SIGN_IDENTITY =
+          CODE_SIGN_ENTITLEMENTS =
+          PROVISIONING_PROFILE =
+          PROVISIONING_PROFILE_SPECIFIER =
+          DEVELOPMENT_TEAM =
+          AD_HOC_CODE_SIGNING_ALLOWED = YES
+          EOF
+          echo "nosign_xcconfig=/tmp/nosign.xcconfig" >> $GITHUB_ENV
+
+      - name: Build Release .app (unsigned)
+        run: |
+          set -o pipefail
           xcodebuild build \
             -workspace "${{ steps.xcode.outputs.workspace }}" \
             -scheme "${{ steps.xcode.outputs.scheme }}" \
             -configuration Release \
             -destination "generic/platform=iOS" \
             -derivedDataPath "$PWD/build" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE_SPECIFIER="" \
-            COMPILER_INDEX_STORE_ENABLE=NO
+            -xcconfig "${{ env.nosign_xcconfig }}" \
+            ONLY_ACTIVE_ARCH=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            2>&1 | tee build.log
+          # Check real exit code (tee hides it)
+          exit ${PIPESTATUS[0]}
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcode-build-log
+          path: build.log
+          retention-days: 5
 
       - name: Package .app into .ipa
         run: |
           APP_PATH=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
-          echo "Found app at: $APP_PATH"
+          echo "App path: $APP_PATH"
           if [ -z "$APP_PATH" ]; then
-            echo "Error: No .app bundle found!"
-            exit 1
+            echo "ERROR: No .app found!"; exit 1
           fi
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -r iphone-check.ipa Payload
-          echo "Created IPA: $(ls -lh iphone-check.ipa)"
+          ls -lh iphone-check.ipa
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
