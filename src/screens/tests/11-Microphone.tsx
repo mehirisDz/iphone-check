@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Audio } from 'expo-av';
+import { View, Text, StyleSheet } from 'react-native';
+import {
+  useAudioRecorder,
+  useAudioRecorderState,
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+} from 'expo-audio';
 import { colors, spacing, radius, typography } from '../../theme';
 import { TestScreenProps } from '../../types';
 import { TEST_REGISTRY } from '../../tests/registry';
@@ -10,70 +16,69 @@ import { LiveMeter } from '../../components/LiveMeter';
 export function MicrophoneTest({ onPass, onFail, onSkip }: TestScreenProps) {
   const [level, setLevel] = useState(0);
   const [peakLevel, setPeakLevel] = useState(0);
-  const [isRecording, setIsRecording] = useState(false);
   const [detected, setDetected] = useState(false);
-  const recordingRef = useRef<Audio.Recording | null>(null);
+  const [isReady, setIsReady] = useState(false);
   const passedRef = useRef(false);
+
+  const recorder = useAudioRecorder({
+    ...RecordingPresets.HIGH_QUALITY,
+    isMeteringEnabled: true,
+  });
+
+  const recorderState = useAudioRecorderState(recorder, 100);
+
   const test = TEST_REGISTRY.find(t => t.id === 'microphone')!;
   const stepIndex = TEST_REGISTRY.findIndex(t => t.id === 'microphone');
 
-  const startRecording = async () => {
-    try {
-      const { granted } = await Audio.requestPermissionsAsync();
-      if (!granted) return;
-
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-
-      const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync({
-        ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
-        isMeteringEnabled: true,
-      });
-      await recording.startAsync();
-      recordingRef.current = recording;
-      setIsRecording(true);
-
-      // Poll metering
-      const interval = setInterval(async () => {
-        if (recordingRef.current) {
-          try {
-            const status = await recordingRef.current.getStatusAsync();
-            if (status.isRecording && status.metering !== undefined) {
-              // metering is in dB, typically -160 to 0
-              const normalized = Math.max(0, Math.min(1, (status.metering + 60) / 60));
-              setLevel(normalized);
-              setPeakLevel(prev => Math.max(prev, normalized));
-              if (normalized > 0.3 && !passedRef.current) {
-                passedRef.current = true;
-                setDetected(true);
-                setTimeout(() => onPass(), 800);
-              }
-            }
-          } catch (_) {
-            // recording may have stopped
-          }
-        }
-      }, 100);
-
-      return () => clearInterval(interval);
-    } catch (error) {
-      console.warn('Microphone test error:', error);
-    }
-  };
-
   useEffect(() => {
-    startRecording();
-    return () => {
-      if (recordingRef.current) {
-        recordingRef.current.stopAndUnloadAsync().catch(() => {});
-        recordingRef.current = null;
+    let isMounted = true;
+
+    async function init() {
+      try {
+        const { granted } = await requestRecordingPermissionsAsync();
+        if (!granted) return;
+
+        await setAudioModeAsync({
+          allowsRecording: true,
+          playsInSilentMode: true,
+        });
+
+        await recorder.prepareToRecordAsync();
+        recorder.record();
+        if (isMounted) setIsReady(true);
+      } catch (err) {
+        console.warn('Microphone init error:', err);
       }
-      Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => {});
+    }
+
+    init();
+
+    return () => {
+      isMounted = false;
+      try {
+        if (recorder.isRecording) {
+          recorder.stop();
+        }
+      } catch (_) {}
+      setAudioModeAsync({ allowsRecording: false }).catch(() => {});
     };
   }, []);
+
+  useEffect(() => {
+    if (recorderState && recorderState.metering !== undefined) {
+      // metering is in dB, typically -160 to 0
+      const db = recorderState.metering;
+      const normalized = Math.max(0, Math.min(1, (db + 60) / 60));
+      setLevel(normalized);
+      setPeakLevel(prev => Math.max(prev, normalized));
+
+      if (normalized > 0.25 && !passedRef.current) {
+        passedRef.current = true;
+        setDetected(true);
+        setTimeout(() => onPass(), 800);
+      }
+    }
+  }, [recorderState, onPass]);
 
   const dbValue = level > 0 ? Math.round(-60 + level * 60) : -60;
 
@@ -97,7 +102,7 @@ export function MicrophoneTest({ onPass, onFail, onSkip }: TestScreenProps) {
           borderColor: detected ? colors.pass : colors.border,
         }]}>
           <Text style={[styles.statusText, { color: detected ? colors.pass : colors.textSecondary }]}>
-            {detected ? '✓ Microphone detected input — Pass!' : isRecording ? 'Speak or clap near the phone…' : 'Starting microphone…'}
+            {detected ? '✓ Microphone detected input — Pass!' : isReady ? 'Speak or clap near the phone…' : 'Starting microphone…'}
           </Text>
         </View>
       </View>

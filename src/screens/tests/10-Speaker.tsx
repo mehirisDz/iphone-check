@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Audio } from 'expo-av';
+import { createAudioPlayer, setAudioModeAsync, AudioPlayer } from 'expo-audio';
+import { File, Paths } from 'expo-file-system';
 import { colors, spacing, radius, typography } from '../../theme';
 import { TestScreenProps } from '../../types';
 import { TEST_REGISTRY } from '../../tests/registry';
@@ -9,7 +10,7 @@ import { TestShell } from '../../components/TestShell';
 export function SpeakerTest({ onPass, onFail, onSkip }: TestScreenProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [frequency, setFrequency] = useState(1000);
-  const soundRef = useRef<Audio.Sound | null>(null);
+  const playerRef = useRef<AudioPlayer | null>(null);
   const test = TEST_REGISTRY.find(t => t.id === 'speaker')!;
   const stepIndex = TEST_REGISTRY.findIndex(t => t.id === 'speaker');
 
@@ -17,23 +18,26 @@ export function SpeakerTest({ onPass, onFail, onSkip }: TestScreenProps) {
   const FREQ_LABELS = ['250 Hz', '500 Hz', '1 kHz', '2 kHz', '4 kHz', '8 kHz'];
 
   useEffect(() => {
-    // Configure audio for speaker playback
-    Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
-    });
+    setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: false,
+    }).catch(() => {});
 
     return () => {
-      if (soundRef.current) {
-        soundRef.current.unloadAsync();
+      if (playerRef.current) {
+        playerRef.current.pause();
+        playerRef.current.release();
+        playerRef.current = null;
       }
     };
   }, []);
 
   const playTone = async () => {
     try {
-      if (soundRef.current) {
-        await soundRef.current.unloadAsync();
+      if (playerRef.current) {
+        playerRef.current.pause();
+        playerRef.current.release();
+        playerRef.current = null;
       }
 
       // Generate a WAV buffer for a pure sine tone
@@ -68,36 +72,29 @@ export function SpeakerTest({ onPass, onFail, onSkip }: TestScreenProps) {
         view.setInt16(44 + i * 2, sample * 32767, true);
       }
 
-      // Convert to base64
       const bytes = new Uint8Array(buffer);
-      let binary = '';
-      for (let i = 0; i < bytes.length; i++) {
-        binary += String.fromCharCode(bytes[i]);
+      const toneFile = new File(Paths.cache, `tone_${frequency}.wav`);
+      if (toneFile.exists) {
+        toneFile.delete();
       }
-      const base64 = btoa(binary);
+      toneFile.create();
+      toneFile.write(bytes);
 
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: `data:audio/wav;base64,${base64}` },
-        { shouldPlay: true, isLooping: true }
-      );
-      soundRef.current = sound;
+      const player = createAudioPlayer({ uri: toneFile.uri });
+      player.loop = true;
+      player.play();
+      playerRef.current = player;
       setIsPlaying(true);
-
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && !status.isPlaying && isPlaying) {
-          setIsPlaying(false);
-        }
-      });
     } catch (error) {
       console.warn('Speaker test error:', error);
     }
   };
 
-  const stopTone = async () => {
-    if (soundRef.current) {
-      await soundRef.current.stopAsync();
-      await soundRef.current.unloadAsync();
-      soundRef.current = null;
+  const stopTone = () => {
+    if (playerRef.current) {
+      playerRef.current.pause();
+      playerRef.current.release();
+      playerRef.current = null;
     }
     setIsPlaying(false);
   };
@@ -111,7 +108,13 @@ export function SpeakerTest({ onPass, onFail, onSkip }: TestScreenProps) {
             <TouchableOpacity
               key={f}
               style={[styles.freqPill, frequency === f && styles.freqPillActive]}
-              onPress={() => { setFrequency(f); if (isPlaying) { stopTone().then(playTone); } }}
+              onPress={() => {
+                setFrequency(f);
+                if (isPlaying) {
+                  stopTone();
+                  setTimeout(() => playTone(), 100);
+                }
+              }}
             >
               <Text style={[styles.freqText, frequency === f && styles.freqTextActive]}>{FREQ_LABELS[i]}</Text>
             </TouchableOpacity>

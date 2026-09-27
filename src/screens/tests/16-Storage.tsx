@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import { Paths } from 'expo-file-system';
 import { colors, spacing, radius, typography } from '../../theme';
 import { TestScreenProps } from '../../types';
 import { TEST_REGISTRY } from '../../tests/registry';
@@ -22,21 +22,19 @@ export function StorageTest({ onPass, onFail, onSkip }: TestScreenProps) {
   const stepIndex = TEST_REGISTRY.findIndex(t => t.id === 'storage');
 
   useEffect(() => {
-    (async () => {
-      try {
-        const totalBytes = await FileSystem.getTotalDiskCapacityAsync();
-        const freeBytes = await FileSystem.getFreeDiskStorageAsync();
-        setTotal(totalBytes);
-        setFree(freeBytes);
+    try {
+      const totalBytes = Paths.totalDiskSpace;
+      const freeBytes = Paths.availableDiskSpace;
+      setTotal(totalBytes);
+      setFree(freeBytes);
 
-        // Auto-pass if we got valid readings
-        if (totalBytes > 0) {
-          setTimeout(() => onPass(), 800);
-        }
-      } catch (error) {
-        console.warn('Storage test error:', error);
+      // Auto-pass if we got valid readings
+      if (totalBytes > 0) {
+        setTimeout(() => onPass(), 800);
       }
-    })();
+    } catch (error) {
+      console.warn('Storage test error:', error);
+    }
   }, [onPass]);
 
   const used = total && free ? total - free : null;
