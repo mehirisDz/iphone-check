@@ -29,26 +29,60 @@ jobs:
           EXPO_NO_TELEMETRY: 1
           CI: 1
 
-      - name: Install CocoaPods dependencies
+      - name: Patch Xcode project and Podfile for unsigned build
+        run: |
+          echo "=== Patching project.pbxproj ==="
+          PBXPROJ=$(find ios -maxdepth 2 -name "project.pbxproj" | head -1)
+          sed -i '' \
+            -e 's/DEVELOPMENT_TEAM = [A-Z0-9]*;/DEVELOPMENT_TEAM = "";/g' \
+            -e 's/CODE_SIGN_IDENTITY = ".*";/CODE_SIGN_IDENTITY = "";/g' \
+            -e 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' \
+            -e 's/PROVISIONING_PROFILE_SPECIFIER = ".*";/PROVISIONING_PROFILE_SPECIFIER = "";/g' \
+            "$PBXPROJ"
+
+          echo "=== Patching Podfile to disable pod signing ==="
+          python3 - <<'PY'
+          import re
+          with open("ios/Podfile", "r") as f:
+              content = f.read()
+          patch = """
+            installer.pods_project.targets.each do |target|
+              target.build_configurations.each do |config|
+                config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+                config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
+                config.build_settings['CODE_SIGN_IDENTITY'] = ''
+                config.build_settings['DEVELOPMENT_TEAM'] = ''
+              end
+            end
+          """
+          content = re.sub(
+            r'(post_install do \|installer\|)',
+            r'\1\n' + patch,
+            content
+          )
+          with open("ios/Podfile", "w") as f:
+              f.write(content)
+          print("Podfile patched successfully")
+          PY
+
+      - name: Install CocoaPods
         run: |
           cd ios
           pod install --repo-update
         env:
           CI: 1
 
-      - name: List Xcode schemes
-        id: xcode
+      - name: Detect main app workspace and scheme
         run: |
           WORKSPACE=$(find ios -maxdepth 1 -name "*.xcworkspace" | head -1)
-          echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
-          echo "=== Available schemes ==="
-          xcodebuild -list -workspace "$WORKSPACE" 2>&1
-          # Pick the first non-Pods scheme
-          SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" 2>&1 | awk '/Schemes:/,/^$/' | tail -n +2 | grep -v Pods | head -1 | tr -d ' ')
-          echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
-          echo "=== Using scheme: $SCHEME ==="
+          XCODEPROJ=$(find ios -maxdepth 1 -name "*.xcodeproj" | head -1)
+          SCHEME=$(basename "$XCODEPROJ" .xcodeproj)
+          echo "workspace=$WORKSPACE" >> $GITHUB_ENV
+          echo "scheme=$SCHEME" >> $GITHUB_ENV
+          echo "Detected Workspace: $WORKSPACE"
+          echo "Detected Scheme: $SCHEME"
 
-      - name: Disable signing via xcconfig
+      - name: Build unsigned Release .app
         run: |
           cat > /tmp/nosign.xcconfig <<'EOF'
           CODE_SIGNING_ALLOWED = NO
@@ -59,24 +93,30 @@ jobs:
           PROVISIONING_PROFILE_SPECIFIER =
           DEVELOPMENT_TEAM =
           AD_HOC_CODE_SIGNING_ALLOWED = YES
+          ENABLE_BITCODE = NO
+          ONLY_ACTIVE_ARCH = NO
           EOF
-          echo "nosign_xcconfig=/tmp/nosign.xcconfig" >> $GITHUB_ENV
 
-      - name: Build Release .app (unsigned)
-        run: |
           set -o pipefail
           xcodebuild build \
-            -workspace "${{ steps.xcode.outputs.workspace }}" \
-            -scheme "${{ steps.xcode.outputs.scheme }}" \
+            -workspace "$workspace" \
+            -scheme "$scheme" \
             -configuration Release \
             -destination "generic/platform=iOS" \
             -derivedDataPath "$PWD/build" \
-            -xcconfig "${{ env.nosign_xcconfig }}" \
-            ONLY_ACTIVE_ARCH=NO \
+            -xcconfig /tmp/nosign.xcconfig \
             COMPILER_INDEX_STORE_ENABLE=NO \
             2>&1 | tee build.log
-          # Check real exit code (tee hides it)
+
           exit ${PIPESTATUS[0]}
+
+      - name: Show last 100 lines of build log on failure
+        if: failure()
+        run: |
+          echo "=== LAST 100 LINES OF BUILD LOG ==="
+          tail -100 build.log || echo "No build.log found"
+          echo "=== ERRORS ONLY ==="
+          grep -E "^.*(error:|BUILD FAILED)" build.log | tail -50 || true
 
       - name: Upload build log on failure
         if: failure()
@@ -88,13 +128,14 @@ jobs:
 
       - name: Package .app into .ipa
         run: |
-          APP_PATH=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
-          echo "App path: $APP_PATH"
-          if [ -z "$APP_PATH" ]; then
-            echo "ERROR: No .app found!"; exit 1
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          echo "App found at: $APP"
+          if [ -z "$APP" ]; then
+            echo "ERROR: No .app bundle found!"
+            exit 1
           fi
           mkdir -p Payload
-          cp -r "$APP_PATH" Payload/
+          cp -r "$APP" Payload/
           zip -r iphone-check.ipa Payload
           ls -lh iphone-check.ipa
 
