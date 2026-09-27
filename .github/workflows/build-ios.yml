@@ -3,7 +3,7 @@ name: Build iOS IPA
 on:
   push:
     branches: [main]
-  workflow_dispatch: # allows manual trigger from GitHub UI
+  workflow_dispatch:
 
 jobs:
   build-ios:
@@ -23,14 +23,27 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install xcpretty
-        run: gem install xcpretty
-
-      - name: Expo prebuild (generate iOS native project)
+      - name: Expo prebuild (generate iOS project)
         run: npx expo prebuild --platform ios --clean --no-install
         env:
           EXPO_NO_TELEMETRY: 1
           CI: 1
+
+      - name: Disable code signing in Podfile
+        run: |
+          ruby -e "
+          podfile = File.read('ios/Podfile')
+          patch = %Q{
+              installer.pods_project.targets.each do |target|
+                target.build_configurations.each do |config|
+                  config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+                  config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
+                end
+              end
+          }
+          podfile.gsub!(/post_install do \|installer\|/, \"post_install do |installer|#{patch}\")
+          File.write('ios/Podfile', podfile)
+          "
 
       - name: Install CocoaPods dependencies
         run: |
@@ -43,35 +56,38 @@ jobs:
         id: xcode
         run: |
           WORKSPACE=$(find ios -maxdepth 1 -name "*.xcworkspace" | head -1)
-          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null | awk '/Schemes:/{flag=1;next}/^[[:space:]]*$/{flag=0}flag{gsub(/^[ \t]+/, ""); print; exit}')
           echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
           echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
-          echo "Workspace: $WORKSPACE"
-          echo "Scheme: $SCHEME"
+          echo "Detected Workspace: $WORKSPACE"
+          echo "Detected Scheme: $SCHEME"
 
-      - name: Build unsigned archive
+      - name: Build unsigned Release .app
         run: |
-          set -o pipefail
-          xcodebuild archive \
+          xcodebuild build \
             -workspace "${{ steps.xcode.outputs.workspace }}" \
             -scheme "${{ steps.xcode.outputs.scheme }}" \
             -configuration Release \
             -destination "generic/platform=iOS" \
-            -archivePath "$PWD/build/iPhoneCheck.xcarchive" \
+            -derivedDataPath "$PWD/build" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            DEVELOPMENT_TEAM="" \
-            | xcpretty --color
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            COMPILER_INDEX_STORE_ENABLE=NO
 
       - name: Package .app into .ipa
         run: |
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          echo "Found app at: $APP_PATH"
+          if [ -z "$APP_PATH" ]; then
+            echo "Error: No .app bundle found!"
+            exit 1
+          fi
           mkdir -p Payload
-          APP_PATH=$(find build/iPhoneCheck.xcarchive/Products/Applications -name "*.app" | head -1)
-          echo "Found app: $APP_PATH"
           cp -r "$APP_PATH" Payload/
-          zip -r iphone-check.ipa Payload/
-          echo "IPA size: $(du -sh iphone-check.ipa | cut -f1)"
+          zip -r iphone-check.ipa Payload
+          echo "Created IPA: $(ls -lh iphone-check.ipa)"
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
