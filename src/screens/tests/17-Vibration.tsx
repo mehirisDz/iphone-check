@@ -1,77 +1,225 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, typography } from '../../theme';
 import { TestScreenProps } from '../../types';
 import { TEST_REGISTRY } from '../../tests/registry';
 import { TestShell } from '../../components/TestShell';
+import { GlassView } from '../../components/GlassView';
 
-const HAPTIC_TYPES = [
-  { label: 'Light', run: () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light) },
-  { label: 'Medium', run: () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium) },
-  { label: 'Heavy', run: () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy) },
-  { label: 'Success', run: () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success) },
-  { label: 'Warning', run: () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning) },
-  { label: 'Error', run: () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error) },
+interface HapticMode {
+  id: string;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  trigger: () => void;
+}
+
+const MODES: HapticMode[] = [
+  {
+    id: 'light',
+    label: 'Light Impact',
+    icon: 'ellipse-outline',
+    trigger: () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light),
+  },
+  {
+    id: 'medium',
+    label: 'Medium Impact',
+    icon: 'disc-outline',
+    trigger: () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium),
+  },
+  {
+    id: 'heavy',
+    label: 'Heavy Impact',
+    icon: 'hardware-chip-outline',
+    trigger: () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy),
+  },
+  {
+    id: 'success',
+    label: 'Success Notification',
+    icon: 'checkmark-circle-outline',
+    trigger: () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success),
+  },
+  {
+    id: 'warning',
+    label: 'Warning Pattern',
+    icon: 'alert-circle-outline',
+    trigger: () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning),
+  },
+  {
+    id: 'rigid',
+    label: 'Rigid Pulse',
+    icon: 'flash-outline',
+    trigger: () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid),
+  },
 ];
 
 export function VibrationTest({ onPass, onFail, onSkip }: TestScreenProps) {
-  const [lastTapped, setLastTapped] = useState<string | null>(null);
-  const [tapCount, setTapCount] = useState(0);
+  const [tested, setTested] = useState<Set<string>>(new Set());
+  const [activeId, setActiveId] = useState<string | null>(null);
+
   const test = TEST_REGISTRY.find(t => t.id === 'vibration')!;
   const stepIndex = TEST_REGISTRY.findIndex(t => t.id === 'vibration');
 
-  const handleTap = async (type: typeof HAPTIC_TYPES[number]) => {
-    await type.run();
-    setLastTapped(type.label);
-    setTapCount(prev => prev + 1);
+  const handlePress = (mode: HapticMode) => {
+    setActiveId(mode.id);
+    mode.trigger();
+    setTested(prev => new Set(prev).add(mode.id));
+    setTimeout(() => setActiveId(null), 350);
   };
 
   return (
-    <TestShell test={test} stepIndex={stepIndex} total={TEST_REGISTRY.length} onPass={onPass} onFail={onFail} onSkip={onSkip}>
+    <TestShell
+      test={test}
+      stepIndex={stepIndex}
+      total={TEST_REGISTRY.length}
+      onPass={onPass}
+      onFail={onFail}
+      onSkip={onSkip}
+    >
       <View style={styles.container}>
-        <Text style={styles.hint}>Tap each button below and feel for the vibration.</Text>
+        <Text style={styles.sectionHeader}>
+          Tap each module to trigger Apple Taptic Engine ({tested.size} / {MODES.length})
+        </Text>
 
         <View style={styles.grid}>
-          {HAPTIC_TYPES.map((type) => (
-            <TouchableOpacity
-              key={type.label}
-              style={[styles.hapticBtn, lastTapped === type.label && styles.hapticBtnActive]}
-              onPress={() => handleTap(type)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.hapticIcon}>📳</Text>
-              <Text style={[styles.hapticLabel, lastTapped === type.label && styles.hapticLabelActive]}>
-                {type.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {MODES.map(mode => {
+            const isTested = tested.has(mode.id);
+            const isActive = activeId === mode.id;
+
+            return (
+              <TouchableOpacity
+                key={mode.id}
+                style={styles.cardWrapper}
+                onPress={() => handlePress(mode)}
+                activeOpacity={0.7}
+              >
+                <GlassView
+                  intensity={isActive ? 65 : 35}
+                  style={[
+                    styles.card,
+                    isTested && styles.cardTested,
+                    isActive && styles.cardActive,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.iconCircle,
+                      isTested && styles.iconCircleTested,
+                      isActive && styles.iconCircleActive,
+                    ]}
+                  >
+                    <Ionicons
+                      name={mode.icon}
+                      size={24}
+                      color={
+                        isActive
+                          ? colors.systemGreen
+                          : isTested
+                          ? '#FFFFFF'
+                          : colors.textSecondary
+                      }
+                    />
+                  </View>
+                  <Text
+                    style={[
+                      styles.cardLabel,
+                      isTested && styles.cardLabelTested,
+                    ]}
+                  >
+                    {mode.label}
+                  </Text>
+                </GlassView>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
-        <View style={[styles.statusBox, {
-          backgroundColor: tapCount > 0 ? colors.accentDim : colors.surface,
-          borderColor: tapCount > 0 ? colors.accent : colors.border,
-        }]}>
-          <Text style={[styles.statusText, { color: tapCount > 0 ? colors.accent : colors.textSecondary }]}>
-            {tapCount > 0
-              ? `Last: ${lastTapped} — Did you feel the vibration?`
-              : 'Tap a button to trigger haptic feedback'}
+        <GlassView intensity={30} style={styles.instructionGlass}>
+          <Ionicons
+            name="information-circle-outline"
+            size={18}
+            color={colors.systemGreen}
+          />
+          <Text style={styles.instructionText}>
+            Confirm physical motor vibration and haptic sensations feel crisp
           </Text>
-        </View>
+        </GlassView>
       </View>
     </TestShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, gap: spacing.lg },
-  hint: { ...typography.callout, textAlign: 'center' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, justifyContent: 'center' },
-  hapticBtn: { width: '30%', aspectRatio: 1, backgroundColor: colors.surface, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, gap: spacing.xs },
-  hapticBtnActive: { backgroundColor: colors.accentDim, borderColor: colors.accent },
-  hapticIcon: { fontSize: 28 },
-  hapticLabel: { ...typography.footnote, color: colors.textSecondary, fontWeight: '600' as const },
-  hapticLabelActive: { color: colors.accent },
-  statusBox: { padding: spacing.lg, borderRadius: radius.lg, borderWidth: 1, alignItems: 'center' },
-  statusText: { ...typography.callout, textAlign: 'center', lineHeight: 22 },
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: spacing.lg,
+  },
+  sectionHeader: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    justifyContent: 'center',
+  },
+  cardWrapper: {
+    width: '48%',
+  },
+  card: {
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderRadius: radius.xl,
+  },
+  cardTested: {
+    borderColor: 'rgba(48, 209, 88, 0.35)',
+  },
+  cardActive: {
+    backgroundColor: 'rgba(48, 209, 88, 0.15)',
+    borderColor: colors.systemGreen,
+  },
+  iconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconCircleTested: {
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  iconCircleActive: {
+    backgroundColor: 'rgba(48, 209, 88, 0.25)',
+  },
+  cardLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '600' as const,
+    textAlign: 'center',
+  },
+  cardLabelTested: {
+    color: '#FFFFFF',
+  },
+  instructionGlass: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    gap: spacing.sm,
+  },
+  instructionText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    flex: 1,
+    lineHeight: 16,
+  },
 });

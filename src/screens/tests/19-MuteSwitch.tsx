@@ -1,91 +1,216 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { colors, spacing, radius, typography } from '../../theme';
 import { TestScreenProps } from '../../types';
 import { TEST_REGISTRY } from '../../tests/registry';
 import { TestShell } from '../../components/TestShell';
+import { GlassView } from '../../components/GlassView';
+import { SuccessOverlay } from '../../components/SuccessOverlay';
 
 export function MuteSwitchTest({ onPass, onFail, onSkip }: TestScreenProps) {
   const [ringConfirmed, setRingConfirmed] = useState(false);
   const [silentConfirmed, setSilentConfirmed] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+
   const test = TEST_REGISTRY.find(t => t.id === 'mute-switch')!;
   const stepIndex = TEST_REGISTRY.findIndex(t => t.id === 'mute-switch');
 
+  const handleRing = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    setRingConfirmed(true);
+    if (silentConfirmed) {
+      setTimeout(() => setShowSuccess(true), 600);
+    }
+  };
+
+  const handleSilent = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    setSilentConfirmed(true);
+    if (ringConfirmed) {
+      setTimeout(() => setShowSuccess(true), 600);
+    }
+  };
+
   return (
-    <TestShell test={test} stepIndex={stepIndex} total={TEST_REGISTRY.length} onPass={onPass} onFail={onFail} onSkip={onSkip}>
+    <TestShell
+      test={test}
+      stepIndex={stepIndex}
+      total={TEST_REGISTRY.length}
+      onPass={onPass}
+      onFail={onFail}
+      onSkip={onSkip}
+    >
       <View style={styles.container}>
-        <View style={styles.phoneOutline}>
-          {/* Mute switch */}
-          <View style={[styles.switchZone, (ringConfirmed || silentConfirmed) && styles.switchActive]}>
-            <View style={[styles.switchToggle, silentConfirmed && styles.switchToggleSilent]} />
+        {/* Apple Mute / Action Switch Card */}
+        <GlassView intensity={40} style={styles.heroCard}>
+          <View style={styles.switchGraphic}>
+            <View
+              style={[
+                styles.switchThumb,
+                silentConfirmed && styles.switchThumbSilent,
+              ]}
+            >
+              <View
+                style={[
+                  styles.orangeAccent,
+                  silentConfirmed && styles.orangeAccentVisible,
+                ]}
+              />
+            </View>
           </View>
-          <View style={styles.screenArea}>
-            <Text style={styles.phoneLabel}>iPhone</Text>
-          </View>
-        </View>
-
-        <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Test the Ring / Silent switch</Text>
-          <Text style={styles.step}>
-            The switch is on the left side of the iPhone, above the volume buttons.
+          <Text style={styles.switchTitle}>Ring / Silent Switch</Text>
+          <Text style={styles.switchSubtitle}>
+            Toggle the physical switch or Action Button on side of device
           </Text>
-        </View>
+        </GlassView>
 
-        <View style={styles.confirmRow}>
+        {/* Verification Toggles */}
+        <View style={styles.row}>
           <TouchableOpacity
-            style={[styles.confirmBtn, ringConfirmed && styles.confirmBtnDone]}
-            onPress={() => setRingConfirmed(true)}
+            style={styles.tileWrapper}
+            onPress={handleRing}
+            activeOpacity={0.8}
           >
-            <Text style={styles.confirmIcon}>{ringConfirmed ? '✓' : '🔔'}</Text>
-            <Text style={[styles.confirmLabel, ringConfirmed && styles.confirmLabelDone]}>
-              Ring mode works
-            </Text>
+            <GlassView
+              intensity={ringConfirmed ? 50 : 25}
+              style={[styles.tile, ringConfirmed && styles.tileActive]}
+            >
+              <Ionicons
+                name="notifications-outline"
+                size={28}
+                color={ringConfirmed ? colors.systemGreen : '#FFFFFF'}
+              />
+              <Text style={styles.tileTitle}>Ring Mode</Text>
+              <Text style={styles.tileSub}>Confirmed</Text>
+            </GlassView>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.confirmBtn, silentConfirmed && styles.confirmBtnDone]}
-            onPress={() => setSilentConfirmed(true)}
+            style={styles.tileWrapper}
+            onPress={handleSilent}
+            activeOpacity={0.8}
           >
-            <Text style={styles.confirmIcon}>{silentConfirmed ? '✓' : '🔕'}</Text>
-            <Text style={[styles.confirmLabel, silentConfirmed && styles.confirmLabelDone]}>
-              Silent mode works
-            </Text>
+            <GlassView
+              intensity={silentConfirmed ? 50 : 25}
+              style={[styles.tile, silentConfirmed && styles.tileActive]}
+            >
+              <Ionicons
+                name="notifications-off-outline"
+                size={28}
+                color={silentConfirmed ? colors.systemOrange : '#FFFFFF'}
+              />
+              <Text style={styles.tileTitle}>Silent Mode</Text>
+              <Text style={styles.tileSub}>Confirmed</Text>
+            </GlassView>
           </TouchableOpacity>
         </View>
 
-        <View style={[styles.statusBox, {
-          backgroundColor: ringConfirmed && silentConfirmed ? colors.passDim : colors.surface,
-          borderColor: ringConfirmed && silentConfirmed ? colors.pass : colors.border,
-        }]}>
-          <Text style={[styles.statusText, { color: ringConfirmed && silentConfirmed ? colors.pass : colors.textSecondary }]}>
-            {ringConfirmed && silentConfirmed
-              ? '✓ Both modes confirmed — tap Pass'
-              : 'Toggle the switch between Ring ↔ Silent and confirm each mode'}
+        <GlassView intensity={25} style={styles.statusGlass}>
+          <Text style={styles.statusText}>
+            Confirm physical toggle moves cleanly and registers both positions
           </Text>
-        </View>
+        </GlassView>
       </View>
+
+      <SuccessOverlay
+        visible={showSuccess}
+        title="Ring / Silent Switch Confirmed"
+        onFinish={onPass}
+      />
     </TestShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, gap: spacing.lg, alignItems: 'center' },
-  phoneOutline: { width: 160, height: 240, borderRadius: radius.xxl, borderWidth: 2, borderColor: colors.border, backgroundColor: colors.surface, position: 'relative', alignItems: 'center', justifyContent: 'center' },
-  switchZone: { position: 'absolute', left: -36, top: 30, width: 28, height: 44, borderRadius: radius.sm, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, justifyContent: 'flex-start', padding: 3 },
-  switchActive: { borderColor: colors.accent },
-  switchToggle: { width: '100%', height: '45%', borderRadius: 4, backgroundColor: colors.textTertiary },
-  switchToggleSilent: { backgroundColor: colors.accent, marginTop: 'auto' },
-  screenArea: { width: '70%', height: '60%', borderRadius: radius.md, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
-  phoneLabel: { ...typography.footnote, color: colors.textTertiary },
-  infoCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm, borderWidth: 1, borderColor: colors.border, width: '100%' },
-  infoTitle: { ...typography.headline },
-  step: { ...typography.callout, lineHeight: 22 },
-  confirmRow: { flexDirection: 'row', gap: spacing.sm, width: '100%' },
-  confirmBtn: { flex: 1, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, alignItems: 'center', gap: spacing.xs, borderWidth: 1, borderColor: colors.border },
-  confirmBtnDone: { backgroundColor: colors.passDim, borderColor: colors.pass },
-  confirmIcon: { fontSize: 24 },
-  confirmLabel: { ...typography.footnote, color: colors.textSecondary, fontWeight: '600' as const, textAlign: 'center' },
-  confirmLabelDone: { color: colors.pass },
-  statusBox: { width: '100%', padding: spacing.lg, borderRadius: radius.lg, borderWidth: 1, alignItems: 'center' },
-  statusText: { ...typography.callout, textAlign: 'center', lineHeight: 22 },
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: spacing.lg,
+  },
+  heroCard: {
+    padding: spacing.xl,
+    alignItems: 'center',
+    borderRadius: radius.xl,
+    gap: spacing.sm,
+  },
+  switchGraphic: {
+    width: 72,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    padding: 3,
+    marginBottom: spacing.xs,
+  },
+  switchThumb: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  switchThumbSilent: {
+    transform: [{ translateX: 34 }],
+  },
+  orangeAccent: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'transparent',
+  },
+  orangeAccentVisible: {
+    backgroundColor: colors.systemOrange,
+  },
+  switchTitle: {
+    ...typography.title2,
+    color: '#FFFFFF',
+    fontWeight: '700' as const,
+  },
+  switchSubtitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  row: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  tileWrapper: {
+    flex: 1,
+  },
+  tile: {
+    padding: spacing.lg,
+    borderRadius: radius.xl,
+    alignItems: 'center',
+    gap: 4,
+  },
+  tileActive: {
+    borderColor: 'rgba(48, 209, 88, 0.35)',
+    backgroundColor: 'rgba(48, 209, 88, 0.08)',
+  },
+  tileTitle: {
+    ...typography.headline,
+    color: '#FFFFFF',
+    fontSize: 15,
+    marginTop: 4,
+  },
+  tileSub: {
+    ...typography.caption,
+    color: colors.textTertiary,
+  },
+  statusGlass: {
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+  },
+  statusText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
 });

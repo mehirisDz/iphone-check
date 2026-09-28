@@ -1,3 +1,5 @@
+import { Ionicons } from '@expo/vector-icons';
+
 export type TestOutcome = 'pass' | 'fail' | 'skip' | 'pending';
 
 export type TestId =
@@ -26,9 +28,9 @@ export interface TestDefinition {
   id: TestId;
   title: string;
   subtitle: string;
-  icon: string; // emoji for now
+  iconName: keyof typeof Ionicons.glyphMap;
   category: TestCategory;
-  autoPass?: boolean; // sensor automatically confirms pass
+  autoPass?: boolean;
 }
 
 export type TestCategory =

@@ -11,13 +11,14 @@ import { colors, spacing, radius, typography } from '../../theme';
 import { TestScreenProps } from '../../types';
 import { TEST_REGISTRY } from '../../tests/registry';
 import { TestShell } from '../../components/TestShell';
-import { LiveMeter } from '../../components/LiveMeter';
+import { GlassView } from '../../components/GlassView';
+import { SuccessOverlay } from '../../components/SuccessOverlay';
 
 export function MicrophoneTest({ onPass, onFail, onSkip }: TestScreenProps) {
   const [level, setLevel] = useState(0);
   const [peakLevel, setPeakLevel] = useState(0);
-  const [detected, setDetected] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   const passedRef = useRef(false);
 
   const recorder = useAudioRecorder({
@@ -25,7 +26,7 @@ export function MicrophoneTest({ onPass, onFail, onSkip }: TestScreenProps) {
     isMeteringEnabled: true,
   });
 
-  const recorderState = useAudioRecorderState(recorder, 100);
+  const recorderState = useAudioRecorderState(recorder, 80);
 
   const test = TEST_REGISTRY.find(t => t.id === 'microphone')!;
   const stepIndex = TEST_REGISTRY.findIndex(t => t.id === 'microphone');
@@ -47,7 +48,7 @@ export function MicrophoneTest({ onPass, onFail, onSkip }: TestScreenProps) {
         recorder.record();
         if (isMounted) setIsReady(true);
       } catch (err) {
-        console.warn('Microphone init error:', err);
+        console.warn('Mic init error:', err);
       }
     }
 
@@ -66,58 +67,169 @@ export function MicrophoneTest({ onPass, onFail, onSkip }: TestScreenProps) {
 
   useEffect(() => {
     if (recorderState && recorderState.metering !== undefined) {
-      // metering is in dB, typically -160 to 0
       const db = recorderState.metering;
       const normalized = Math.max(0, Math.min(1, (db + 60) / 60));
       setLevel(normalized);
       setPeakLevel(prev => Math.max(prev, normalized));
 
-      if (normalized > 0.25 && !passedRef.current) {
+      if (normalized > 0.28 && !passedRef.current) {
         passedRef.current = true;
-        setDetected(true);
-        setTimeout(() => onPass(), 800);
+        setShowSuccess(true);
       }
     }
-  }, [recorderState, onPass]);
+  }, [recorderState]);
 
   const dbValue = level > 0 ? Math.round(-60 + level * 60) : -60;
+  const peakDb = Math.round(-60 + peakLevel * 60);
 
   return (
-    <TestShell test={test} stepIndex={stepIndex} total={TEST_REGISTRY.length} onPass={onPass} onFail={onFail} onSkip={onSkip}>
+    <TestShell
+      test={test}
+      stepIndex={stepIndex}
+      total={TEST_REGISTRY.length}
+      onPass={onPass}
+      onFail={onFail}
+      onSkip={onSkip}
+      autoResult={true}
+    >
       <View style={styles.container}>
-        <View style={styles.bigNumBox}>
-          <Text style={styles.bigNum}>{dbValue}</Text>
-          <Text style={styles.bigUnit}>dB</Text>
+        {/* Large Decibel Level Display */}
+        <View style={styles.decibelHero}>
+          <Text style={styles.decibelNum}>{dbValue}</Text>
+          <Text style={styles.decibelUnit}>dB SPL</Text>
         </View>
 
-        <LiveMeter value={level} label="Input Level" displayValue={`${dbValue} dB`} />
+        {/* Dynamic Frosted Glass Level Waveform */}
+        <GlassView intensity={35} style={styles.waveMeterCard}>
+          <View style={styles.waveRow}>
+            {Array.from({ length: 24 }).map((_, i) => {
+              const barHeight = Math.max(
+                6,
+                Math.sin((i / 24) * Math.PI) * (level * 50) + Math.random() * 4
+              );
+              const isActive = i / 24 <= level;
 
-        <View style={styles.peakRow}>
-          <Text style={styles.peakLabel}>Peak Level</Text>
-          <Text style={styles.peakValue}>{Math.round(-60 + peakLevel * 60)} dB</Text>
+              return (
+                <View
+                  key={i}
+                  style={[
+                    styles.waveBar,
+                    {
+                      height: barHeight,
+                      backgroundColor: isActive
+                        ? colors.systemGreen
+                        : 'rgba(255, 255, 255, 0.1)',
+                    },
+                  ]}
+                />
+              );
+            })}
+          </View>
+        </GlassView>
+
+        {/* Metrics Row */}
+        <View style={styles.metricsRow}>
+          <GlassView intensity={30} style={styles.metricCard}>
+            <Text style={styles.metricLabel}>Peak Amplitude</Text>
+            <Text style={styles.metricValue}>{peakDb} dB</Text>
+          </GlassView>
+
+          <GlassView intensity={30} style={styles.metricCard}>
+            <Text style={styles.metricLabel}>Mic Status</Text>
+            <Text
+              style={[
+                styles.metricValue,
+                { color: isReady ? colors.systemGreen : colors.systemOrange },
+              ]}
+            >
+              {isReady ? 'Listening' : 'Initializing'}
+            </Text>
+          </GlassView>
         </View>
 
-        <View style={[styles.statusBox, {
-          backgroundColor: detected ? colors.passDim : colors.surface,
-          borderColor: detected ? colors.pass : colors.border,
-        }]}>
-          <Text style={[styles.statusText, { color: detected ? colors.pass : colors.textSecondary }]}>
-            {detected ? '✓ Microphone detected input — Pass!' : isReady ? 'Speak or clap near the phone…' : 'Starting microphone…'}
+        {/* Audio Verification Prompt */}
+        <GlassView intensity={25} style={styles.promptGlass}>
+          <Text style={styles.promptText}>
+            Speak, tap the casing, or clap near the phone to register audio input
           </Text>
-        </View>
+        </GlassView>
       </View>
+
+      <SuccessOverlay
+        visible={showSuccess}
+        title="Microphone Active"
+        onFinish={onPass}
+      />
     </TestShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, gap: spacing.lg, alignItems: 'center', justifyContent: 'center' },
-  bigNumBox: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.xs },
-  bigNum: { fontSize: 72, fontWeight: '800' as const, color: colors.accent, letterSpacing: -3 },
-  bigUnit: { ...typography.title3, color: colors.textSecondary },
-  peakRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', paddingHorizontal: spacing.sm },
-  peakLabel: { ...typography.footnote, color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 0.8 },
-  peakValue: { ...typography.footnote, color: colors.accent, fontWeight: '700' as const },
-  statusBox: { width: '100%', padding: spacing.lg, borderRadius: radius.lg, borderWidth: 1, alignItems: 'center' },
-  statusText: { ...typography.headline, textAlign: 'center' },
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: spacing.lg,
+  },
+  decibelHero: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  decibelNum: {
+    ...typography.metric,
+    color: '#FFFFFF',
+  },
+  decibelUnit: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    letterSpacing: 1.5,
+    fontWeight: '700' as const,
+  },
+  waveMeterCard: {
+    padding: spacing.xl,
+    borderRadius: radius.xl,
+    alignItems: 'center',
+  },
+  waveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 60,
+  },
+  waveBar: {
+    width: 6,
+    borderRadius: 3,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  metricCard: {
+    flex: 1,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    alignItems: 'center',
+    gap: 4,
+  },
+  metricLabel: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    textTransform: 'uppercase',
+  },
+  metricValue: {
+    ...typography.headline,
+    color: '#FFFFFF',
+    fontWeight: '700' as const,
+  },
+  promptGlass: {
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+  },
+  promptText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
 });

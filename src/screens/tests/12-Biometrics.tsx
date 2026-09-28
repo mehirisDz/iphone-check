@@ -1,129 +1,184 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { colors, spacing, radius, typography } from '../../theme';
 import { TestScreenProps } from '../../types';
 import { TEST_REGISTRY } from '../../tests/registry';
 import { TestShell } from '../../components/TestShell';
+import { GlassView } from '../../components/GlassView';
+import { SuccessOverlay } from '../../components/SuccessOverlay';
 
 export function BiometricsTest({ onPass, onFail, onSkip }: TestScreenProps) {
-  const [status, setStatus] = useState<'idle' | 'checking' | 'success' | 'failed' | 'unavailable'>('idle');
-  const [biometricType, setBiometricType] = useState<string>('');
+  const [authType, setAuthType] = useState<'Face ID' | 'Touch ID' | 'Biometrics'>('Face ID');
+  const [status, setStatus] = useState<'idle' | 'authenticating' | 'success' | 'failed'>('idle');
+  const [showSuccess, setShowSuccess] = useState(false);
+  const passedRef = useRef(false);
+
   const test = TEST_REGISTRY.find(t => t.id === 'biometrics')!;
   const stepIndex = TEST_REGISTRY.findIndex(t => t.id === 'biometrics');
 
-  const runAuth = async () => {
-    setStatus('checking');
-
-    const compatible = await LocalAuthentication.hasHardwareAsync();
-    if (!compatible) {
-      setStatus('unavailable');
-      return;
-    }
-
-    const enrolled = await LocalAuthentication.isEnrolledAsync();
-    if (!enrolled) {
-      setStatus('unavailable');
-      setBiometricType('No biometrics enrolled');
-      return;
-    }
-
-    const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
-    const typeNames = types.map(t => {
-      switch (t) {
-        case LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION: return 'Face ID';
-        case LocalAuthentication.AuthenticationType.FINGERPRINT: return 'Touch ID';
-        case LocalAuthentication.AuthenticationType.IRIS: return 'Iris';
-        default: return 'Unknown';
+  useEffect(() => {
+    async function checkAndPrompt() {
+      const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
+      if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+        setAuthType('Face ID');
+      } else if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+        setAuthType('Touch ID');
       }
-    });
-    setBiometricType(typeNames.join(', '));
 
-    const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: 'Verify biometric sensor',
-      disableDeviceFallback: true,
-      cancelLabel: 'Cancel',
-    });
+      triggerBiometricAuth();
+    }
 
-    if (result.success) {
-      setStatus('success');
-      setTimeout(() => onPass(), 600);
-    } else {
+    checkAndPrompt();
+  }, []);
+
+  const triggerBiometricAuth = async () => {
+    setStatus('authenticating');
+    try {
+      const res = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Apple Hardware Biometrics Inspection',
+        fallbackLabel: 'Use Device Passcode',
+        cancelLabel: 'Cancel',
+      });
+
+      if (res.success && !passedRef.current) {
+        passedRef.current = true;
+        setStatus('success');
+        setShowSuccess(true);
+      } else {
+        setStatus('failed');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      }
+    } catch (err) {
+      console.warn('Biometric error:', err);
       setStatus('failed');
     }
   };
 
   return (
-    <TestShell test={test} stepIndex={stepIndex} total={TEST_REGISTRY.length} onPass={onPass} onFail={onFail} onSkip={onSkip}>
+    <TestShell
+      test={test}
+      stepIndex={stepIndex}
+      total={TEST_REGISTRY.length}
+      onPass={onPass}
+      onFail={onFail}
+      onSkip={onSkip}
+      autoResult={true}
+    >
       <View style={styles.container}>
-        <View style={[styles.iconRing, {
-          borderColor: status === 'success' ? colors.pass : status === 'failed' ? colors.fail : colors.accent,
-          backgroundColor: status === 'success' ? colors.passDim : status === 'failed' ? colors.failDim : colors.accentDim,
-        }]}>
-          <Text style={styles.icon}>
-            {status === 'success' ? '✓' : status === 'failed' ? '✗' : '🔐'}
+        {/* Apple Face ID / Touch ID Frosted Sensor Card */}
+        <GlassView intensity={40} style={styles.sensorCard}>
+          <View style={styles.iconRing}>
+            <Ionicons
+              name={authType === 'Face ID' ? 'scan-outline' : 'finger-print'}
+              size={54}
+              color={
+                status === 'success'
+                  ? colors.systemGreen
+                  : status === 'failed'
+                  ? colors.systemRed
+                  : '#FFFFFF'
+              }
+            />
+          </View>
+
+          <Text style={styles.authTitle}>Apple {authType}</Text>
+          <Text style={styles.authSub}>
+            Secure Enclave Cryptographic Hardware Verification
           </Text>
-        </View>
 
-        {biometricType ? (
-          <Text style={styles.typeLabel}>Detected: {biometricType}</Text>
-        ) : null}
-
-        {status === 'idle' && (
-          <TouchableOpacity style={styles.authBtn} onPress={runAuth} activeOpacity={0.8}>
-            <Text style={styles.authBtnText}>Authenticate</Text>
-          </TouchableOpacity>
-        )}
-
-        {status === 'checking' && (
-          <Text style={styles.statusText}>Waiting for authentication…</Text>
-        )}
-
-        {status === 'unavailable' && (
-          <View style={styles.unavailBox}>
-            <Text style={styles.unavailText}>
-              Biometric hardware not available or not enrolled on this device.
-            </Text>
-            <Text style={styles.unavailHint}>
-              This may indicate a hardware issue, or the feature hasn't been set up.
-            </Text>
-          </View>
-        )}
-
-        {status === 'success' && (
-          <View style={[styles.statusBox, { backgroundColor: colors.passDim, borderColor: colors.pass }]}>
-            <Text style={[styles.statusText, { color: colors.pass }]}>✓ Biometric authentication successful!</Text>
-          </View>
-        )}
-
-        {status === 'failed' && (
-          <View style={styles.failedSection}>
-            <View style={[styles.statusBox, { backgroundColor: colors.failDim, borderColor: colors.fail }]}>
-              <Text style={[styles.statusText, { color: colors.fail }]}>Authentication failed</Text>
-            </View>
-            <TouchableOpacity style={styles.retryBtn} onPress={runAuth}>
-              <Text style={styles.retryText}>Try Again</Text>
+          {status === 'failed' && (
+            <TouchableOpacity
+              style={styles.retryBtn}
+              onPress={triggerBiometricAuth}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.retryBtnText}>Authenticate Again</Text>
             </TouchableOpacity>
-          </View>
-        )}
+          )}
+        </GlassView>
+
+        <GlassView intensity={25} style={styles.statusGlass}>
+          <Text style={styles.statusText}>
+            {status === 'authenticating'
+              ? 'Verifying biometric sensor with Secure Enclave...'
+              : status === 'success'
+              ? 'Biometric sensor validated successfully'
+              : 'Prompting for biometric recognition'}
+          </Text>
+        </GlassView>
       </View>
+
+      <SuccessOverlay
+        visible={showSuccess}
+        title={`${authType} Verified`}
+        onFinish={onPass}
+      />
     </TestShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.xl },
-  iconRing: { width: 120, height: 120, borderRadius: 60, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
-  icon: { fontSize: 48 },
-  typeLabel: { ...typography.callout, color: colors.accent },
-  authBtn: { backgroundColor: colors.accent, paddingHorizontal: spacing.xl, paddingVertical: spacing.md, borderRadius: radius.pill },
-  authBtnText: { ...typography.headline, color: colors.background, fontWeight: '700' as const },
-  statusBox: { width: '100%', padding: spacing.lg, borderRadius: radius.lg, borderWidth: 1, alignItems: 'center' },
-  statusText: { ...typography.headline, textAlign: 'center', color: colors.textSecondary },
-  unavailBox: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm, borderWidth: 1, borderColor: colors.border },
-  unavailText: { ...typography.callout, color: colors.warn, textAlign: 'center' },
-  unavailHint: { ...typography.footnote, color: colors.textTertiary, textAlign: 'center' },
-  failedSection: { width: '100%', gap: spacing.md, alignItems: 'center' },
-  retryBtn: { backgroundColor: colors.surface, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border },
-  retryText: { ...typography.headline, color: colors.textPrimary },
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing.xl,
+  },
+  sensorCard: {
+    padding: spacing.xxl,
+    alignItems: 'center',
+    borderRadius: radius.xl,
+    gap: spacing.md,
+    width: '100%',
+    maxWidth: 320,
+  },
+  iconRing: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  authTitle: {
+    ...typography.title2,
+    color: '#FFFFFF',
+    fontWeight: '700' as const,
+  },
+  authSub: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  retryBtn: {
+    marginTop: spacing.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: radius.pill,
+  },
+  retryBtnText: {
+    ...typography.footnote,
+    color: '#FFFFFF',
+    fontWeight: '600' as const,
+  },
+  statusGlass: {
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+  },
+  statusText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
 });

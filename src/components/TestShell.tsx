@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,12 @@ import {
   SafeAreaView,
   StatusBar,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { colors, spacing, radius, typography } from '../theme';
 import { TestDefinition } from '../types';
+import { AppleIcon } from './AppleIcon';
+import { GlassView } from './GlassView';
+import { SuccessOverlay } from './SuccessOverlay';
 
 interface Props {
   test: TestDefinition;
@@ -21,66 +25,244 @@ interface Props {
   autoResult?: boolean;
 }
 
-export function TestShell({ test, stepIndex, total, onPass, onFail, onSkip, children, autoResult }: Props) {
+export function TestShell({
+  test,
+  stepIndex,
+  total,
+  onPass,
+  onFail,
+  onSkip,
+  children,
+  autoResult,
+}: Props) {
+  const [showSuccess, setShowSuccess] = useState(false);
   const progress = (stepIndex + 1) / total;
+
+  const handlePass = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    setShowSuccess(true);
+  };
+
+  const handleFail = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+    onFail();
+  };
+
+  const handleSkip = () => {
+    Haptics.selectionAsync().catch(() => {});
+    onSkip();
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+      <StatusBar barStyle="light-content" backgroundColor="#000000" />
+      
+      {/* Top Ambient Progress Bar */}
       <View style={styles.progressTrack}>
         <View style={[styles.progressFill, { width: `${progress * 100}%` as any }]} />
       </View>
+
+      {/* Dynamic Island Style Header Capsule */}
       <View style={styles.header}>
-        <View style={styles.stepBadge}>
-          <Text style={styles.stepText}>{stepIndex + 1} / {total}</Text>
-        </View>
-        <View style={styles.categoryPill}>
-          <Text style={styles.categoryText}>{test.category}</Text>
-        </View>
-      </View>
-      <View style={styles.titleArea}>
-        <Text style={styles.icon}>{test.icon}</Text>
-        <Text style={styles.title}>{test.title}</Text>
-        <Text style={styles.subtitle}>{test.subtitle}</Text>
-      </View>
-      <View style={styles.content}>{children}</View>
-      <View style={styles.actions}>
-        {!autoResult && (
-          <>
-            <TouchableOpacity style={styles.btnPass} onPress={onPass} activeOpacity={0.8}>
-              <Text style={styles.btnPassText}>Pass</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.btnFail} onPress={onFail} activeOpacity={0.8}>
-              <Text style={styles.btnFailText}>Fail</Text>
-            </TouchableOpacity>
-          </>
-        )}
-        <TouchableOpacity style={styles.btnSkip} onPress={onSkip} activeOpacity={0.8}>
-          <Text style={styles.btnSkipText}>Skip</Text>
+        <GlassView intensity={40} style={styles.capsule}>
+          <Text style={styles.capsuleStep}>
+            {stepIndex + 1} of {total}
+          </Text>
+          <View style={styles.capsuleDot} />
+          <Text style={styles.capsuleCategory}>{test.category}</Text>
+        </GlassView>
+
+        <TouchableOpacity onPress={handleSkip} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <Text style={styles.skipBtn}>Skip</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Screen Title & Apple SF Icon */}
+      <View style={styles.titleArea}>
+        <AppleIcon name={test.iconName} size={28} badgeSize={52} badgeColor="rgba(255, 255, 255, 0.08)" />
+        <View style={styles.titleTextContainer}>
+          <Text style={styles.title}>{test.title}</Text>
+          <Text style={styles.subtitle}>{test.subtitle}</Text>
+        </View>
+      </View>
+
+      {/* Interactive Test Content */}
+      <View style={styles.content}>{children}</View>
+
+      {/* Bottom Controls */}
+      <View style={styles.actions}>
+        {!autoResult ? (
+          <View style={styles.buttonRow}>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnFail]}
+              onPress={handleFail}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.btnFailText}>Issue Found</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPass]}
+              onPress={handlePass}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.btnPassText}>Pass</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.autoHintContainer}>
+            <View style={styles.pulsingIndicator} />
+            <Text style={styles.autoHintText}>Live Hardware Inspection Active</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Apple-style Animated Success HUD */}
+      <SuccessOverlay
+        visible={showSuccess}
+        title={`${test.title} Passed`}
+        onFinish={() => {
+          setShowSuccess(false);
+          onPass();
+        }}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  progressTrack: { height: 3, backgroundColor: colors.surface, width: '100%' },
-  progressFill: { height: 3, backgroundColor: colors.accent, borderRadius: radius.pill },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm },
-  stepBadge: { backgroundColor: colors.surface, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border },
-  stepText: { ...typography.footnote, color: colors.textSecondary, fontWeight: '600' as const },
-  categoryPill: { backgroundColor: colors.accentDim, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.pill },
-  categoryText: { ...typography.footnote, color: colors.accent, fontWeight: '600' as const },
-  titleArea: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: spacing.xs },
-  icon: { fontSize: 36, marginBottom: spacing.xs },
-  title: { ...typography.title1 },
-  subtitle: { ...typography.callout, lineHeight: 22, marginTop: spacing.xs },
-  content: { flex: 1, paddingHorizontal: spacing.lg },
-  actions: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, paddingTop: spacing.md, gap: spacing.sm },
-  btnPass: { backgroundColor: colors.accent, paddingVertical: 18, borderRadius: radius.pill, alignItems: 'center' },
-  btnPassText: { ...typography.headline, color: colors.background, fontWeight: '700' as const },
-  btnFail: { backgroundColor: colors.failDim, paddingVertical: 18, borderRadius: radius.pill, alignItems: 'center', borderWidth: 1, borderColor: colors.fail },
-  btnFailText: { ...typography.headline, color: colors.fail },
-  btnSkip: { paddingVertical: spacing.sm, alignItems: 'center' },
-  btnSkipText: { ...typography.callout, color: colors.textTertiary },
+  safe: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  progressTrack: {
+    height: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    width: '100%',
+  },
+  progressFill: {
+    height: 2,
+    backgroundColor: colors.systemGreen,
+    shadowColor: colors.systemGreen,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  capsule: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: radius.pill,
+    gap: 8,
+  },
+  capsuleStep: {
+    ...typography.caption,
+    color: '#FFFFFF',
+    fontWeight: '700' as const,
+  },
+  capsuleDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+  },
+  capsuleCategory: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '500' as const,
+  },
+  skipBtn: {
+    ...typography.callout,
+    color: colors.textTertiary,
+    fontWeight: '500' as const,
+  },
+  titleArea: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+    gap: spacing.md,
+  },
+  titleTextContainer: {
+    flex: 1,
+    gap: 2,
+  },
+  title: {
+    ...typography.title2,
+  },
+  subtitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    lineHeight: 16,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: spacing.lg,
+  },
+  actions: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
+    paddingTop: spacing.sm,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  btn: {
+    flex: 1,
+    paddingVertical: 16,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnPass: {
+    backgroundColor: colors.systemGreen,
+    shadowColor: colors.systemGreen,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+  },
+  btnPassText: {
+    ...typography.headline,
+    color: '#000000',
+    fontWeight: '700' as const,
+  },
+  btnFail: {
+    backgroundColor: 'rgba(255, 69, 58, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 69, 58, 0.35)',
+  },
+  btnFailText: {
+    ...typography.headline,
+    color: colors.systemRed,
+    fontWeight: '600' as const,
+  },
+  autoHintContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: spacing.sm,
+  },
+  pulsingIndicator: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.systemGreen,
+  },
+  autoHintText: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    letterSpacing: 0.2,
+  },
 });

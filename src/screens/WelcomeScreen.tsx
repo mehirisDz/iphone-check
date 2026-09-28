@@ -1,89 +1,130 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, StatusBar, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  SafeAreaView,
+  StatusBar,
+  ScrollView,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { colors, spacing, radius, typography } from '../theme';
 import { TEST_REGISTRY } from '../tests/registry';
 import { TestCategory } from '../types';
+import { GlassView } from '../components/GlassView';
+import { AppleIcon } from '../components/AppleIcon';
 
 interface Props {
   onStart: () => void;
 }
 
-const CATEGORY_ICONS: Record<TestCategory, string> = {
-  'Screen & Touch': '📱',
-  'Motion & Sensors': '🧭',
-  Camera: '📷',
-  Audio: '🎵',
-  Biometrics: '🔐',
-  Connectivity: '📡',
-  Hardware: '⚙️',
+const CATEGORY_ICONS: Record<TestCategory, keyof typeof Ionicons.glyphMap> = {
+  'Screen & Touch': 'color-palette-outline',
+  'Motion & Sensors': 'compass-outline',
+  Camera: 'camera-outline',
+  Audio: 'volume-high-outline',
+  Biometrics: 'scan-outline',
+  Connectivity: 'wifi-outline',
+  Hardware: 'hardware-chip-outline',
 };
 
-const CATEGORIES = Array.from(new Set(TEST_REGISTRY.map((t) => t.category))) as TestCategory[];
+const CATEGORIES = Array.from(new Set(TEST_REGISTRY.map(t => t.category))) as TestCategory[];
 
 export function WelcomeScreen({ onStart }: Props) {
+  const handleStart = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+    onStart();
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Hero */}
-        <View style={styles.hero}>
-          <View style={styles.iconRing}>
-            <Text style={styles.heroIcon}>📱</Text>
+      <StatusBar barStyle="light-content" backgroundColor="#000000" />
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Apple Device Diagnostics Hero Card */}
+        <GlassView intensity={45} style={styles.heroCard}>
+          <AppleIcon
+            name="shield-checkmark-outline"
+            size={32}
+            badgeSize={64}
+            badgeColor="rgba(48, 209, 88, 0.12)"
+          />
+          <View style={styles.heroText}>
+            <Text style={styles.title}>iPhone Check</Text>
+            <Text style={styles.subtitle}>
+              Apple Hardware Diagnostic Suite
+            </Text>
           </View>
-          <Text style={styles.headline}>iPhone Check</Text>
-          <Text style={styles.tagline}>
-            A 20-step hardware inspection for used iPhones.
-            Run every test live before you buy.
-          </Text>
-        </View>
 
-        {/* Stats row */}
-        <View style={styles.statsRow}>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>20</Text>
-            <Text style={styles.statLabel}>Tests</Text>
+          {/* Quick Metrics Bar */}
+          <View style={styles.metricsBar}>
+            <View style={styles.metricItem}>
+              <Text style={styles.metricValue}>20</Text>
+              <Text style={styles.metricLabel}>Modules</Text>
+            </View>
+            <View style={styles.metricDivider} />
+            <View style={styles.metricItem}>
+              <Text style={styles.metricValue}>~3</Text>
+              <Text style={styles.metricLabel}>Minutes</Text>
+            </View>
+            <View style={styles.metricDivider} />
+            <View style={styles.metricItem}>
+              <Text style={styles.metricValue}>100%</Text>
+              <Text style={styles.metricLabel}>On-Device</Text>
+            </View>
           </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>~5</Text>
-            <Text style={styles.statLabel}>Minutes</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>100%</Text>
-            <Text style={styles.statLabel}>On-Device</Text>
-          </View>
-        </View>
+        </GlassView>
 
-        {/* Category list */}
+        {/* Categories Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>What's Tested</Text>
-          {CATEGORIES.map((cat) => {
-            const count = TEST_REGISTRY.filter((t) => t.category === cat).length;
-            return (
-              <View key={cat} style={styles.categoryRow}>
-                <View style={styles.catIconBg}>
-                  <Text style={styles.catIcon}>{CATEGORY_ICONS[cat]}</Text>
-                </View>
-                <Text style={styles.catName}>{cat}</Text>
-                <View style={styles.catBadge}>
-                  <Text style={styles.catCount}>{count}</Text>
-                </View>
-              </View>
-            );
-          })}
+          <Text style={styles.sectionHeader}>Hardware Modules</Text>
+          <View style={styles.categoryList}>
+            {CATEGORIES.map(cat => {
+              const count = TEST_REGISTRY.filter(t => t.category === cat).length;
+              const iconName = CATEGORY_ICONS[cat];
+
+              return (
+                <GlassView key={cat} intensity={30} style={styles.categoryCard}>
+                  <AppleIcon
+                    name={iconName}
+                    size={20}
+                    badgeSize={40}
+                    badgeColor="rgba(255, 255, 255, 0.06)"
+                  />
+                  <Text style={styles.categoryName}>{cat}</Text>
+                  <View style={styles.countBadge}>
+                    <Text style={styles.countText}>{count} tests</Text>
+                  </View>
+                </GlassView>
+              );
+            })}
+          </View>
         </View>
 
-        {/* Disclaimer */}
-        <View style={styles.disclaimer}>
+        {/* Privacy & Hardware Disclosure */}
+        <GlassView intensity={25} style={styles.disclaimerCard}>
+          <Ionicons
+            name="lock-closed-outline"
+            size={16}
+            color={colors.textTertiary}
+          />
           <Text style={styles.disclaimerText}>
-            ⚠️  Results are a real-time snapshot. Always inspect in person. Not a substitute for professional evaluation.
+            All sensor and hardware benchmarks execute strictly on-device in real-time. No telemetry or diagnostics data is transmitted.
           </Text>
-        </View>
+        </GlassView>
 
-        {/* CTA */}
-        <TouchableOpacity style={styles.cta} onPress={onStart} activeOpacity={0.85}>
-          <Text style={styles.ctaText}>Start Inspection</Text>
+        {/* Start Full Inspection Primary Button */}
+        <TouchableOpacity
+          style={styles.startBtn}
+          onPress={handleStart}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.startBtnText}>Start Full Inspection</Text>
+          <Ionicons name="arrow-forward" size={20} color="#000000" />
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -91,28 +132,136 @@ export function WelcomeScreen({ onStart }: Props) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  scroll: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
-  hero: { alignItems: 'center', paddingTop: spacing.xxl, paddingBottom: spacing.xl },
-  iconRing: { width: 96, height: 96, borderRadius: 48, backgroundColor: colors.accentDim, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg, borderWidth: 1, borderColor: colors.accent },
-  heroIcon: { fontSize: 48 },
-  headline: { ...typography.largeTitle, marginBottom: spacing.md },
-  tagline: { ...typography.callout, textAlign: 'center', lineHeight: 24, paddingHorizontal: spacing.md },
-  statsRow: { flexDirection: 'row', backgroundColor: colors.surface, borderRadius: radius.xl, padding: spacing.lg, marginBottom: spacing.xl, alignItems: 'center' },
-  statItem: { flex: 1, alignItems: 'center', gap: spacing.xs },
-  statValue: { ...typography.title2, color: colors.accent },
-  statLabel: { ...typography.footnote, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 },
-  statDivider: { width: 1, height: 32, backgroundColor: colors.border },
-  section: { marginBottom: spacing.xl },
-  sectionTitle: { ...typography.footnote, color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: '700' as const, marginBottom: spacing.md },
-  categoryRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm, gap: spacing.md, borderWidth: 1, borderColor: colors.border },
-  catIconBg: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.accentDim, alignItems: 'center', justifyContent: 'center' },
-  catIcon: { fontSize: 20 },
-  catName: { ...typography.headline, flex: 1 },
-  catBadge: { backgroundColor: colors.accentDim, paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill },
-  catCount: { ...typography.footnote, color: colors.accent, fontWeight: '700' as const },
-  disclaimer: { backgroundColor: colors.surfaceElevated, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.lg, borderWidth: 1, borderColor: colors.border },
-  disclaimerText: { ...typography.footnote, color: colors.textSecondary, lineHeight: 18 },
-  cta: { backgroundColor: colors.accent, paddingVertical: 20, borderRadius: radius.pill, alignItems: 'center', marginBottom: spacing.md },
-  ctaText: { ...typography.headline, color: colors.background, fontWeight: '700' as const, fontSize: 18 },
+  safe: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  scroll: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xxl,
+    gap: spacing.xl,
+  },
+  heroCard: {
+    padding: spacing.xl,
+    alignItems: 'center',
+    borderRadius: radius.xl,
+    gap: spacing.lg,
+  },
+  heroText: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  title: {
+    ...typography.largeTitle,
+    color: '#FFFFFF',
+    fontWeight: '800' as const,
+  },
+  subtitle: {
+    ...typography.callout,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  metricsBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  metricItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  metricValue: {
+    ...typography.title2,
+    color: colors.systemGreen,
+    fontWeight: '800' as const,
+  },
+  metricLabel: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  metricDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  section: {
+    gap: spacing.sm,
+  },
+  sectionHeader: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    paddingHorizontal: spacing.xs,
+  },
+  categoryList: {
+    gap: spacing.sm,
+  },
+  categoryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    gap: spacing.md,
+  },
+  categoryName: {
+    ...typography.headline,
+    flex: 1,
+    color: '#FFFFFF',
+    fontWeight: '600' as const,
+  },
+  countBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  countText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '600' as const,
+  },
+  disclaimerCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: spacing.md,
+    borderRadius: radius.md,
+    gap: spacing.sm,
+  },
+  disclaimerText: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    flex: 1,
+    lineHeight: 16,
+  },
+  startBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.systemGreen,
+    paddingVertical: 18,
+    borderRadius: radius.pill,
+    gap: spacing.sm,
+    shadowColor: colors.systemGreen,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  startBtnText: {
+    ...typography.headline,
+    color: '#000000',
+    fontWeight: '700' as const,
+    fontSize: 17,
+  },
 });

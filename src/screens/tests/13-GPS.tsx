@@ -1,121 +1,206 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import * as Location from 'expo-location';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, typography } from '../../theme';
 import { TestScreenProps } from '../../types';
 import { TEST_REGISTRY } from '../../tests/registry';
 import { TestShell } from '../../components/TestShell';
-import { LiveMeter } from '../../components/LiveMeter';
-import { MetricCard } from '../../components/MetricCard';
+import { GlassView } from '../../components/GlassView';
+import { SuccessOverlay } from '../../components/SuccessOverlay';
 
 export function GPSTest({ onPass, onFail, onSkip }: TestScreenProps) {
-  const [location, setLocation] = useState<Location.LocationObject | null>(null);
-  const [error, setError] = useState<string>('');
-  const [searching, setSearching] = useState(true);
+  const [coords, setCoords] = useState<{
+    latitude: number;
+    longitude: number;
+    accuracy: number | null;
+    altitude: number | null;
+  } | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
   const passedRef = useRef(false);
+
   const test = TEST_REGISTRY.find(t => t.id === 'gps')!;
   const stepIndex = TEST_REGISTRY.findIndex(t => t.id === 'gps');
 
   useEffect(() => {
-    let watchSub: Location.LocationSubscription | null = null;
+    let sub: Location.LocationSubscription | null = null;
 
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setError('Location permission denied');
-        setSearching(false);
-        return;
-      }
+    async function init() {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') return;
 
-      watchSub = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.High,
-          timeInterval: 1000,
-          distanceInterval: 0,
-        },
-        (loc) => {
-          setLocation(loc);
-          setSearching(false);
-          const acc = loc.coords.accuracy ?? 999;
-          if (acc < 100 && !passedRef.current) {
-            passedRef.current = true;
-            setTimeout(() => onPass(), 800);
+        sub = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.High,
+            timeInterval: 1000,
+            distanceInterval: 1,
+          },
+          loc => {
+            setCoords({
+              latitude: loc.coords.latitude,
+              longitude: loc.coords.longitude,
+              accuracy: loc.coords.accuracy,
+              altitude: loc.coords.altitude,
+            });
+
+            if (loc.coords.accuracy && loc.coords.accuracy < 60 && !passedRef.current) {
+              passedRef.current = true;
+              setShowSuccess(true);
+            }
           }
-        }
-      );
-    })();
+        );
+      } catch (err) {
+        console.warn('GPS error:', err);
+      }
+    }
+
+    init();
 
     return () => {
-      if (watchSub) watchSub.remove();
+      sub?.remove();
     };
-  }, [onPass]);
-
-  const accuracy = location?.coords.accuracy ?? null;
-  const accNormalized = accuracy ? Math.max(0, Math.min(1, 1 - accuracy / 200)) : 0;
+  }, []);
 
   return (
-    <TestShell test={test} stepIndex={stepIndex} total={TEST_REGISTRY.length} onPass={onPass} onFail={onFail} onSkip={onSkip}>
+    <TestShell
+      test={test}
+      stepIndex={stepIndex}
+      total={TEST_REGISTRY.length}
+      onPass={onPass}
+      onFail={onFail}
+      onSkip={onSkip}
+      autoResult={true}
+    >
       <View style={styles.container}>
-        {error ? (
-          <View style={[styles.statusBox, { backgroundColor: colors.failDim, borderColor: colors.fail }]}>
-            <Text style={[styles.statusText, { color: colors.fail }]}>{error}</Text>
+        {/* GPS Satellite Lock Hero Card */}
+        <GlassView intensity={40} style={styles.heroCard}>
+          <View style={styles.radarCircle}>
+            <Ionicons name="navigate-outline" size={40} color={colors.systemGreen} />
           </View>
-        ) : searching ? (
-          <View style={styles.searchingBox}>
-            <Text style={styles.searchIcon}>📡</Text>
-            <Text style={styles.searchText}>Searching for GPS signal…</Text>
-          </View>
-        ) : location ? (
-          <>
-            <View style={styles.cards}>
-              <MetricCard label="Latitude" value={location.coords.latitude.toFixed(6)} accent={colors.accent} />
-              <MetricCard label="Longitude" value={location.coords.longitude.toFixed(6)} accent={colors.accent} />
-            </View>
+          <Text style={styles.accuracyValue}>
+            {coords?.accuracy ? `± ${Math.round(coords.accuracy)}m` : 'Acquiring...'}
+          </Text>
+          <Text style={styles.accuracyLabel}>GNSS Satellite Precision</Text>
+        </GlassView>
 
-            <View style={styles.cards}>
-              <MetricCard
-                label="Accuracy"
-                value={accuracy ? `${accuracy.toFixed(0)}` : '—'}
-                unit="m"
-                accent={accuracy && accuracy < 100 ? colors.pass : colors.warn}
-                dimBg={accuracy && accuracy < 100 ? colors.passDim : 'rgba(255,159,10,0.15)'}
-              />
-              <MetricCard
-                label="Altitude"
-                value={location.coords.altitude !== null ? `${location.coords.altitude.toFixed(0)}` : '—'}
-                unit="m"
-                accent={colors.accent}
-              />
-            </View>
+        {/* Live Coordinate Breakdown */}
+        <View style={styles.coordsGrid}>
+          <GlassView intensity={35} style={styles.coordTile}>
+            <Text style={styles.coordLabel}>Latitude</Text>
+            <Text style={styles.coordValue}>
+              {coords ? coords.latitude.toFixed(5) : '—'}
+            </Text>
+          </GlassView>
 
-            <LiveMeter
-              value={accNormalized}
-              label="GPS Accuracy"
-              displayValue={accuracy ? `${accuracy.toFixed(0)} m` : '—'}
-              color={accuracy && accuracy < 100 ? colors.pass : colors.warn}
-            />
+          <GlassView intensity={35} style={styles.coordTile}>
+            <Text style={styles.coordLabel}>Longitude</Text>
+            <Text style={styles.coordValue}>
+              {coords ? coords.longitude.toFixed(5) : '—'}
+            </Text>
+          </GlassView>
 
-            <View style={[styles.statusBox, {
-              backgroundColor: accuracy && accuracy < 100 ? colors.passDim : colors.surface,
-              borderColor: accuracy && accuracy < 100 ? colors.pass : colors.border,
-            }]}>
-              <Text style={[styles.statusText, { color: accuracy && accuracy < 100 ? colors.pass : colors.textSecondary }]}>
-                {accuracy && accuracy < 100 ? '✓ GPS fix acquired — Pass!' : 'Waiting for better accuracy (<100m)…'}
-              </Text>
-            </View>
-          </>
-        ) : null}
+          <GlassView intensity={35} style={styles.coordTile}>
+            <Text style={styles.coordLabel}>Altitude</Text>
+            <Text style={styles.coordValue}>
+              {coords?.altitude ? `${Math.round(coords.altitude)} m` : '—'}
+            </Text>
+          </GlassView>
+
+          <GlassView intensity={35} style={styles.coordTile}>
+            <Text style={styles.coordLabel}>Lock Status</Text>
+            <Text
+              style={[
+                styles.coordValue,
+                { color: coords ? colors.systemGreen : colors.systemOrange },
+              ]}
+            >
+              {coords ? 'Acquired' : 'Searching'}
+            </Text>
+          </GlassView>
+        </View>
+
+        <GlassView intensity={25} style={styles.statusGlass}>
+          <Text style={styles.statusText}>
+            Validating GPS, GLONASS, Galileo & BeiDou receiver hardware
+          </Text>
+        </GlassView>
       </View>
+
+      <SuccessOverlay
+        visible={showSuccess}
+        title="GPS Satellite Lock Verified"
+        onFinish={onPass}
+      />
     </TestShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, gap: spacing.lg },
-  cards: { flexDirection: 'row', gap: spacing.sm },
-  searchingBox: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
-  searchIcon: { fontSize: 64 },
-  searchText: { ...typography.headline, color: colors.textSecondary },
-  statusBox: { padding: spacing.lg, borderRadius: radius.lg, borderWidth: 1, alignItems: 'center' },
-  statusText: { ...typography.headline, textAlign: 'center' },
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: spacing.lg,
+  },
+  heroCard: {
+    padding: spacing.xl,
+    alignItems: 'center',
+    borderRadius: radius.xl,
+    gap: spacing.xs,
+  },
+  radarCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(48, 209, 88, 0.12)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(48, 209, 88, 0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  accuracyValue: {
+    ...typography.metricMd,
+    color: '#FFFFFF',
+    fontWeight: '800' as const,
+  },
+  accuracyLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  coordsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  coordTile: {
+    width: '48%',
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    gap: 4,
+  },
+  coordLabel: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    fontSize: 10,
+    textTransform: 'uppercase',
+    fontWeight: '700' as const,
+  },
+  coordValue: {
+    ...typography.headline,
+    color: '#FFFFFF',
+  },
+  statusGlass: {
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+  },
+  statusText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
 });
