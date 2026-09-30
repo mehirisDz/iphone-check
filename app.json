@@ -64,10 +64,7 @@
           "faceIDPermission": "Face ID is tested to verify biometric hardware is functioning."
         }
       ],
-      "expo-audio",
-      "expo-asset",
-      "expo-font",
-      "expo-keep-awake"
+      "expo-font"
     ],
     "extra": {
       "eas": {
