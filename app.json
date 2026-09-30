@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#0D0D0D",
+    "backgroundColor": "#000000",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.iphonecheck.app",
@@ -19,12 +19,13 @@
         "NSFaceIDUsageDescription": "Face ID is tested to verify biometric hardware is functioning.",
         "NSBluetoothAlwaysUsageDescription": "Bluetooth state is checked to confirm the radio is enabled.",
         "NSBluetoothPeripheralUsageDescription": "Bluetooth is used to verify the Bluetooth hardware.",
-        "UIRequiresFullScreen": true
+        "UIRequiresFullScreen": true,
+        "UIViewControllerBasedStatusBarAppearance": true
       }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0D0D0D",
+        "backgroundColor": "#000000",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png"
       },
@@ -65,7 +66,8 @@
       ],
       "expo-audio",
       "expo-asset",
-      "expo-font"
+      "expo-font",
+      "expo-keep-awake"
     ],
     "extra": {
       "eas": {

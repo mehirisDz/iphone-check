@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, radius, typography } from '../../theme';
 import { TestScreenProps } from '../../types';
 import { GlassView } from '../../components/GlassView';
@@ -24,6 +24,7 @@ const COLOR_NAMES = ['Red', 'Orange', 'Yellow', 'Green', 'Cyan', 'Blue', 'Purple
 export function ColorSweepTest({ onPass, onFail, onSkip }: TestScreenProps) {
   const [colorIdx, setColorIdx] = useState(0);
   const [showSuccess, setShowSuccess] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const handleNext = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -34,80 +35,72 @@ export function ColorSweepTest({ onPass, onFail, onSkip }: TestScreenProps) {
     }
   };
 
-  const isLight = colorIdx === 7 || colorIdx === 2;
+  const isLight = colorIdx === 7 || colorIdx === 2; // White or Yellow
 
   return (
     <View style={[styles.container, { backgroundColor: COLORS[colorIdx] }]}>
-      <StatusBar
-        barStyle={isLight ? 'dark-content' : 'light-content'}
-        translucent
-        backgroundColor="transparent"
-      />
+      {/* Floating Top Bar */}
+      <View style={[styles.topBar, { paddingTop: (insets.top || 20) + 8 }]}>
+        <GlassView intensity={50} style={styles.capsule}>
+          <Text style={[styles.colorName, isLight && styles.textDark]}>
+            {COLOR_NAMES[colorIdx]} · {colorIdx + 1}/{COLORS.length}
+          </Text>
+        </GlassView>
+        <TouchableOpacity onPress={onSkip} style={styles.skipBtn}>
+          <Text style={[styles.skipText, isLight && styles.textDark]}>Skip</Text>
+        </TouchableOpacity>
+      </View>
 
-      <SafeAreaView style={styles.safe}>
-        {/* Floating Top Capsule */}
-        <View style={styles.topBar}>
-          <GlassView intensity={50} style={styles.capsule}>
-            <Text style={[styles.colorName, isLight && styles.textDark]}>
-              {COLOR_NAMES[colorIdx]} · {colorIdx + 1}/{COLORS.length}
-            </Text>
-          </GlassView>
-          <TouchableOpacity onPress={onSkip} style={styles.skipBtn}>
-            <Text style={[styles.skipText, isLight && styles.textDark]}>Skip</Text>
+      {/* Full Screen Tap Area */}
+      <TouchableOpacity
+        style={styles.tapArea}
+        onPress={handleNext}
+        activeOpacity={1}
+      >
+        <GlassView intensity={30} style={styles.hintGlass}>
+          <Text style={[styles.hintText, isLight && styles.textDark]}>
+            Tap screen to cycle colors · Look for dead pixels
+          </Text>
+        </GlassView>
+      </TouchableOpacity>
+
+      {/* Bottom Bar */}
+      <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom + spacing.md, spacing.xl) }]}>
+        <View style={styles.dotsRow}>
+          {COLORS.map((c, i) => (
+            <TouchableOpacity
+              key={i}
+              onPress={() => {
+                Haptics.selectionAsync().catch(() => {});
+                setColorIdx(i);
+              }}
+              style={[
+                styles.dot,
+                { backgroundColor: c },
+                i === colorIdx && styles.dotActive,
+              ]}
+            />
+          ))}
+        </View>
+
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.btn, styles.btnFail]}
+            onPress={onFail}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.btnFailText}>Found Issue</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.btn, styles.btnPass]}
+            onPress={() => setShowSuccess(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.btnPassText}>Display Clean</Text>
           </TouchableOpacity>
         </View>
-
-        {/* Center Tap Area Prompt */}
-        <TouchableOpacity
-          style={styles.tapArea}
-          onPress={handleNext}
-          activeOpacity={1}
-        >
-          <GlassView intensity={30} style={styles.hintGlass}>
-            <Text style={[styles.hintText, isLight && styles.textDark]}>
-              Tap screen to cycle colors · Inspect for dead pixels
-            </Text>
-          </GlassView>
-        </TouchableOpacity>
-
-        {/* Floating Bottom Control Bar */}
-        <View style={styles.bottomBar}>
-          <View style={styles.dotsRow}>
-            {COLORS.map((c, i) => (
-              <TouchableOpacity
-                key={i}
-                onPress={() => {
-                  Haptics.selectionAsync().catch(() => {});
-                  setColorIdx(i);
-                }}
-                style={[
-                  styles.dot,
-                  { backgroundColor: c },
-                  i === colorIdx && styles.dotActive,
-                ]}
-              />
-            ))}
-          </View>
-
-          <View style={styles.actionRow}>
-            <TouchableOpacity
-              style={[styles.btn, styles.btnFail]}
-              onPress={onFail}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.btnFailText}>Found Issue</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.btn, styles.btnPass]}
-              onPress={() => setShowSuccess(true)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.btnPassText}>Display Clean</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </SafeAreaView>
+      </View>
 
       <SuccessOverlay
         visible={showSuccess}
@@ -121,9 +114,6 @@ export function ColorSweepTest({ onPass, onFail, onSkip }: TestScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  safe: {
-    flex: 1,
     justifyContent: 'space-between',
   },
   topBar: {
@@ -131,7 +121,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
   },
   capsule: {
     paddingHorizontal: 16,
@@ -174,7 +164,7 @@ const styles = StyleSheet.create({
   },
   bottomBar: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingTop: spacing.md,
     gap: spacing.md,
     alignItems: 'center',
   },

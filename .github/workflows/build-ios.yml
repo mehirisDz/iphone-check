@@ -8,7 +8,7 @@ on:
 jobs:
   build-ios:
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout repo
@@ -29,22 +29,30 @@ jobs:
           EXPO_NO_TELEMETRY: 1
           CI: 1
 
-      - name: Patch Xcode project and Podfile for unsigned build
+      - name: Disable signing in project.pbxproj
         run: |
           echo "=== Patching project.pbxproj ==="
           PBXPROJ=$(find ios -maxdepth 2 -name "project.pbxproj" | head -1)
+          echo "Found: $PBXPROJ"
           sed -i '' \
             -e 's/DEVELOPMENT_TEAM = [A-Z0-9]*;/DEVELOPMENT_TEAM = "";/g' \
+            -e 's/DEVELOPMENT_TEAM = "[^"]*";/DEVELOPMENT_TEAM = "";/g' \
             -e 's/CODE_SIGN_IDENTITY = ".*";/CODE_SIGN_IDENTITY = "";/g' \
             -e 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' \
             -e 's/PROVISIONING_PROFILE_SPECIFIER = ".*";/PROVISIONING_PROFILE_SPECIFIER = "";/g' \
+            -e 's/CODE_SIGNING_REQUIRED = YES;/CODE_SIGNING_REQUIRED = NO;/g' \
+            -e 's/CODE_SIGNING_ALLOWED = YES;/CODE_SIGNING_ALLOWED = NO;/g' \
             "$PBXPROJ"
+          echo "=== Patched pbxproj ==="
 
-          echo "=== Patching Podfile to disable pod signing ==="
+      - name: Disable signing in Podfile (post_install hook)
+        run: |
           python3 - <<'PY'
           import re
+
           with open("ios/Podfile", "r") as f:
               content = f.read()
+
           patch = """
             installer.pods_project.targets.each do |target|
               target.build_configurations.each do |config|
@@ -55,13 +63,18 @@ jobs:
               end
             end
           """
-          content = re.sub(
-            r'(post_install do \|installer\|)',
-            r'\1\n' + patch,
-            content
-          )
+
+          if 'post_install do |installer|' in content:
+              content = content.replace(
+                  'post_install do |installer|',
+                  'post_install do |installer|\n' + patch
+              )
+          else:
+              content += '\npost_install do |installer|\n' + patch + '\nend\n'
+
           with open("ios/Podfile", "w") as f:
               f.write(content)
+
           print("Podfile patched successfully")
           PY
 
@@ -72,17 +85,17 @@ jobs:
         env:
           CI: 1
 
-      - name: Detect main app workspace and scheme
+      - name: Detect Xcode workspace and scheme
         run: |
           WORKSPACE=$(find ios -maxdepth 1 -name "*.xcworkspace" | head -1)
           XCODEPROJ=$(find ios -maxdepth 1 -name "*.xcodeproj" | head -1)
           SCHEME=$(basename "$XCODEPROJ" .xcodeproj)
           echo "workspace=$WORKSPACE" >> $GITHUB_ENV
           echo "scheme=$SCHEME" >> $GITHUB_ENV
-          echo "Detected Workspace: $WORKSPACE"
-          echo "Detected Scheme: $SCHEME"
+          echo "Workspace: $WORKSPACE"
+          echo "Scheme: $SCHEME"
 
-      - name: Build unsigned Release .app
+      - name: Build unsigned .app
         run: |
           cat > /tmp/nosign.xcconfig <<'EOF'
           CODE_SIGNING_ALLOWED = NO
@@ -95,6 +108,9 @@ jobs:
           AD_HOC_CODE_SIGNING_ALLOWED = YES
           ENABLE_BITCODE = NO
           ONLY_ACTIVE_ARCH = NO
+          DEBUG_INFORMATION_FORMAT = dwarf
+          GCC_OPTIMIZATION_LEVEL = 0
+          SWIFT_OPTIMIZATION_LEVEL = -Onone
           EOF
 
           set -o pipefail
@@ -110,13 +126,14 @@ jobs:
 
           exit ${PIPESTATUS[0]}
 
-      - name: Show last 100 lines of build log on failure
+      - name: Show last 150 lines of build log on failure
         if: failure()
         run: |
-          echo "=== LAST 100 LINES OF BUILD LOG ==="
-          tail -100 build.log || echo "No build.log found"
-          echo "=== ERRORS ONLY ==="
-          grep -E "^.*(error:|BUILD FAILED)" build.log | tail -50 || true
+          echo "=== LAST 150 LINES OF BUILD LOG ==="
+          tail -150 build.log || echo "No build.log found"
+          echo ""
+          echo "=== ERROR LINES ONLY ==="
+          grep -E "^.*(error:|BUILD FAILED|fatal error)" build.log | tail -60 || true
 
       - name: Upload build log on failure
         if: failure()
@@ -132,6 +149,7 @@ jobs:
           echo "App found at: $APP"
           if [ -z "$APP" ]; then
             echo "ERROR: No .app bundle found!"
+            ls -la build/Build/Products/ || true
             exit 1
           fi
           mkdir -p Payload

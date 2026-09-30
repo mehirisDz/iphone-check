@@ -1,17 +1,20 @@
 import 'react-native-gesture-handler';
 import React from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StyleSheet } from 'react-native';
 import { TestRunnerScreen } from './src/screens/TestRunnerScreen';
 
 export default function App() {
   return (
     <GestureHandlerRootView style={styles.root}>
-      <TestRunnerScreen />
+      <SafeAreaProvider>
+        <TestRunnerScreen />
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, backgroundColor: '#000000' },
 });

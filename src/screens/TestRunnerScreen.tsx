@@ -1,4 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { TEST_REGISTRY } from '../tests/registry';
 import { TestResults, TestId, TestOutcome } from '../types';
 import { WelcomeScreen } from './WelcomeScreen';
@@ -57,6 +60,20 @@ export function TestRunnerScreen() {
   const [stepIndex, setStepIndex] = useState(0);
   const [results, setResults] = useState<TestResults>({});
 
+  const isInspecting = screen === 'test';
+
+  // Keep screen on and lock status bar during active inspection
+  useEffect(() => {
+    if (isInspecting) {
+      activateKeepAwakeAsync().catch(() => {});
+    } else {
+      deactivateKeepAwake();
+    }
+    return () => {
+      deactivateKeepAwake();
+    };
+  }, [isInspecting]);
+
   const recordAndAdvance = (outcome: TestOutcome) => {
     const testId = TEST_REGISTRY[stepIndex].id;
     setResults((prev) => ({ ...prev, [testId]: outcome }));
@@ -79,21 +96,37 @@ export function TestRunnerScreen() {
   };
 
   if (screen === 'welcome') {
-    return <WelcomeScreen onStart={() => { setStepIndex(0); setScreen('test'); }} />;
+    return (
+      <>
+        <StatusBar style="light" />
+        <WelcomeScreen onStart={() => { setStepIndex(0); setScreen('test'); }} />
+      </>
+    );
   }
 
   if (screen === 'report') {
-    return <ReportScreen results={results} onRetry={handleRetry} onReset={handleReset} />;
+    return (
+      <>
+        <StatusBar style="light" />
+        <ReportScreen results={results} onRetry={handleRetry} onReset={handleReset} />
+      </>
+    );
   }
 
   const currentTest = TEST_REGISTRY[stepIndex];
   const TestComponent = TEST_COMPONENTS[currentTest.id as TestId];
 
   return (
-    <TestComponent
-      onPass={() => recordAndAdvance('pass')}
-      onFail={() => recordAndAdvance('fail')}
-      onSkip={() => recordAndAdvance('skip')}
-    />
+    <>
+      {/* Hide status bar during active inspection for full-screen immersive experience */}
+      <StatusBar style="light" hidden />
+      <View style={{ flex: 1 }}>
+        <TestComponent
+          onPass={() => recordAndAdvance('pass')}
+          onFail={() => recordAndAdvance('fail')}
+          onSkip={() => recordAndAdvance('skip')}
+        />
+      </View>
+    </>
   );
 }

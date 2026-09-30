@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
-  StatusBar,
+  Animated,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { colors, spacing, radius, typography } from '../theme';
 import { TestDefinition } from '../types';
@@ -36,7 +36,22 @@ export function TestShell({
   autoResult,
 }: Props) {
   const [showSuccess, setShowSuccess] = useState(false);
+  const insets = useSafeAreaInsets();
   const progress = (stepIndex + 1) / total;
+
+  // Pulsing dot animation for auto-detect tests
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (autoResult) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.7, duration: 900, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
+        ])
+      ).start();
+    }
+    return () => pulseAnim.setValue(1);
+  }, [autoResult]);
 
   const handlePass = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
@@ -54,43 +69,49 @@ export function TestShell({
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="light-content" backgroundColor="#000000" />
-      
+    <View style={[styles.safe, { paddingTop: insets.top || 20 }]}>
       {/* Top Ambient Progress Bar */}
       <View style={styles.progressTrack}>
         <View style={[styles.progressFill, { width: `${progress * 100}%` as any }]} />
+        {/* Glow pulse at tip */}
+        <View style={[styles.progressGlow, { left: `${progress * 100}%` as any }]} />
       </View>
 
-      {/* Dynamic Island Style Header Capsule */}
+      {/* Header: Capsule + Skip */}
       <View style={styles.header}>
         <GlassView intensity={40} style={styles.capsule}>
-          <Text style={styles.capsuleStep}>
-            {stepIndex + 1} of {total}
-          </Text>
+          <Text style={styles.capsuleStep}>{stepIndex + 1} of {total}</Text>
           <View style={styles.capsuleDot} />
           <Text style={styles.capsuleCategory}>{test.category}</Text>
         </GlassView>
 
-        <TouchableOpacity onPress={handleSkip} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+        <TouchableOpacity
+          onPress={handleSkip}
+          hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+        >
           <Text style={styles.skipBtn}>Skip</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Screen Title & Apple SF Icon */}
+      {/* Title + Apple Icon */}
       <View style={styles.titleArea}>
-        <AppleIcon name={test.iconName} size={28} badgeSize={52} badgeColor="rgba(255, 255, 255, 0.08)" />
+        <AppleIcon
+          name={test.iconName}
+          size={28}
+          badgeSize={52}
+          badgeColor="rgba(255, 255, 255, 0.08)"
+        />
         <View style={styles.titleTextContainer}>
           <Text style={styles.title}>{test.title}</Text>
           <Text style={styles.subtitle}>{test.subtitle}</Text>
         </View>
       </View>
 
-      {/* Interactive Test Content */}
+      {/* Test Content */}
       <View style={styles.content}>{children}</View>
 
       {/* Bottom Controls */}
-      <View style={styles.actions}>
+      <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom + spacing.md, spacing.xl) }]}>
         {!autoResult ? (
           <View style={styles.buttonRow}>
             <TouchableOpacity
@@ -111,8 +132,9 @@ export function TestShell({
           </View>
         ) : (
           <View style={styles.autoHintContainer}>
+            <Animated.View style={[styles.pulsingIndicatorOuter, { transform: [{ scale: pulseAnim }] }]} />
             <View style={styles.pulsingIndicator} />
-            <Text style={styles.autoHintText}>Live Hardware Inspection Active</Text>
+            <Text style={styles.autoHintText}>Live Hardware Inspection · Auto-Detecting</Text>
           </View>
         )}
       </View>
@@ -126,7 +148,7 @@ export function TestShell({
           onPass();
         }}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -143,9 +165,17 @@ const styles = StyleSheet.create({
   progressFill: {
     height: 2,
     backgroundColor: colors.systemGreen,
+  },
+  progressGlow: {
+    position: 'absolute',
+    top: -3,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.systemGreen,
     shadowColor: colors.systemGreen,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
+    shadowOpacity: 1,
     shadowRadius: 6,
   },
   header: {
@@ -211,7 +241,6 @@ const styles = StyleSheet.create({
   },
   actions: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
     paddingTop: spacing.sm,
   },
   buttonRow: {
@@ -253,6 +282,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     paddingVertical: spacing.sm,
+    position: 'relative',
+  },
+  pulsingIndicatorOuter: {
+    position: 'absolute',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: 'rgba(48, 209, 88, 0.3)',
   },
   pulsingIndicator: {
     width: 6,
@@ -262,7 +299,7 @@ const styles = StyleSheet.create({
   },
   autoHintText: {
     ...typography.caption,
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     letterSpacing: 0.2,
   },
 });
